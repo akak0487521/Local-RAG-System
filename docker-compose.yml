@@ -1,0 +1,51 @@
+version: "3.9"
+services:
+  ragapi:
+    build: .
+    container_name: ragapi
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - ollama
+    volumes:
+      - ./docs:/app/docs
+      - ./vector_store:/app/vector_store
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    # If your Ollama runs on the host instead of the compose service,
+    # uncomment the following and set OLLAMA_HOST=http://host.docker.internal:11434 in .env
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama:/root/.ollama
+    gpus: all
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    # For NVIDIA GPUs, uncomment (requires nvidia-container-toolkit on host)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: ["gpu"]
+
+volumes:
+  ollama:
+  hf-cache:

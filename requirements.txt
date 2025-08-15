@@ -1,0 +1,10 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-dotenv==1.0.1
+requests==2.32.3
+openai==1.40.2
+chromadb==0.5.3
+sentence-transformers==3.0.1
+# CPU-only PyTorch (smaller image, avoids CUDA wheels)
+torch==2.3.1+cpu ; sys_platform == 'linux'
+--extra-index-url https://download.pytorch.org/whl/cpu

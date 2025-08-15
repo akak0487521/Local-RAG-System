@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAG Writer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 + Babel（瀏覽器即時編譯 JSX） -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+
+    const Label = ({children}) => <label className="text-sm text-gray-600 font-medium">{children}</label>;
+    const Field = ({label, children}) => (
+      <div className="flex flex-col gap-1">
+        <Label>{label}</Label>{children}
+      </div>
+    );
+    const Section = ({title, right, children}) => (
+      <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">{title}</h2>{right}
+        </div>{children}
+      </div>
+    );
+    const Chip = ({children}) => (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-800 mr-1 mb-1">{children}</span>
+    );
+    const Toggle = ({checked, onChange}) => (
+      <button onClick={()=>onChange(!checked)} className={`w-11 h-6 rounded-full transition relative ${checked ? "bg-green-500":"bg-gray-300"}`} aria-pressed={checked}>
+        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5":""}`} />
+      </button>
+    );
+    const TextButton = ({onClick, children, title}) => (
+      <button onClick={onClick} title={title} className="text-sm text-blue-600 hover:text-blue-800 underline">{children}</button>
+    );
+
+    function HealthPill({ health }){
+      if (!health) return <span className="text-xs text-gray-400">尚未檢查</span>;
+      const ok = health.status === "ok";
+      return (
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${ok?"bg-green-100 text-green-800":"bg-red-100 text-red-700"}`}>{ok? "OK":"ERR"}</span>
+          <span className="text-gray-600">docs: {health.docs_count ?? "?"}</span>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${health.backends?.ollama?.enabled? "bg-sky-100 text-sky-800":"bg-gray-100 text-gray-600"}`}>
+            ollama: {health.backends?.ollama?.enabled? (health.backends?.ollama?.model || "on"):"off"}
+          </span>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${health.backends?.openai?.enabled? "bg-purple-100 text-purple-800":"bg-gray-100 text-gray-600"}`}>
+            openai: {health.backends?.openai?.enabled? (health.backends?.openai?.model || "on"):"off"}
+          </span>
+        </div>
+      );
+    }
+
+    function RagWriter() {
+      const defaultBase = `${window.location.origin}`; // 同源預設
+      // --- settings with localStorage ---
+      const [apiBase, setApiBase] = useState(localStorage.getItem("apiBase") || defaultBase);
+      const [apiKey, setApiKey] = useState(localStorage.getItem("apiKey") || "");
+      const [query, setQuery] = useState("");
+      const [mode, setMode] = useState(localStorage.getItem("mode") || "creative");
+      const [language, setLanguage] = useState(localStorage.getItem("language") || "zh-tw");
+      const [engine, setEngine] = useState(localStorage.getItem("engine") || "auto");
+      const [k, setK] = useState(parseInt(localStorage.getItem("k") || "6"));
+      const [rerank, setRerank] = useState(localStorage.getItem("rerank")==="false" ? false : true);
+      const [namespace, setNamespace] = useState(localStorage.getItem("namespace") || "");
+      const [canonicality, setCanonicality] = useState(localStorage.getItem("canonicality") || "");
+
+      const [searching, setSearching] = useState(false);
+      const [composing, setComposing] = useState(false);
+      const [streaming, setStreaming] = useState(false);
+
+      const [hits, setHits] = useState([]);
+      const [selectedIds, setSelectedIds] = useState([]);            // === 新增：勾選片段 ===
+      const [draft, setDraft] = useState("");
+      const [citations, setCitations] = useState([]);
+      const [usedHits, setUsedHits] = useState(0);
+      const [engineUsed, setEngineUsed] = useState("");
+      const [error, setError] = useState("");
+      const [showRaw, setShowRaw] = useState(false);
+      const [lastSearchRaw, setLastSearchRaw] = useState(null);
+      const [lastComposeRaw, setLastComposeRaw] = useState(null);
+      const [health, setHealth] = useState(null);
+      const [pinging, setPinging] = useState(false);
+
+      useEffect(()=>{ localStorage.setItem("apiBase", apiBase); }, [apiBase]);
+      useEffect(()=>{ localStorage.setItem("apiKey", apiKey); }, [apiKey]);
+      useEffect(()=>{ localStorage.setItem("mode", mode); }, [mode]);
+      useEffect(()=>{ localStorage.setItem("language", language); }, [language]);
+      useEffect(()=>{ localStorage.setItem("engine", engine); }, [engine]);
+      useEffect(()=>{ localStorage.setItem("k", String(k)); }, [k]);
+      useEffect(()=>{ localStorage.setItem("rerank", String(rerank)); }, [rerank]);
+      useEffect(()=>{ localStorage.setItem("namespace", namespace); }, [namespace]);
+      useEffect(()=>{ localStorage.setItem("canonicality", canonicality); }, [canonicality]);
+
+      const headers = useMemo(() => {
+        const h = {"Content-Type":"application/json"};
+        if (apiKey) h["x-api-key"] = apiKey;
+        return h;
+      }, [apiKey]);
+
+      async function pingHealth(){
+        setPinging(true); setError("");
+        try{
+          const r = await fetch(`${apiBase}/health`, { headers });
+          const data = await r.json();
+          setHealth(data);
+        }catch(e){ setError(String(e)); }
+        finally { setPinging(false); }
+      }
+      useEffect(()=>{ pingHealth(); }, []);
+
+      async function doSearch() {
+        setSearching(true); setError(""); setSelectedIds([]);
+        try {
+          const payload = {
+            query, k,
+            namespace: namespace || undefined,
+            canonicality: canonicality || undefined,
+            rerank, highlight: true,
+          };
+          const r = await fetch(`${apiBase}/search`, { method: "POST", headers, body: JSON.stringify(payload) });
+          if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+          const data = await r.json();
+          setLastSearchRaw(data); setHits(data.hits || []);
+        } catch (e) { setError(String(e)); }
+        finally { setSearching(false); }
+      }
+
+      async function doCompose() {
+        setComposing(true); setError("");
+        try {
+          const payload = {
+            query, mode, k,
+            namespace: namespace || undefined,
+            canonicality: canonicality || undefined,
+            rerank,
+            engine: engine === "auto" ? undefined : engine,
+            language,
+            selected_ids: selectedIds.length ? selectedIds : undefined,   // === 帶入勾選 ===
+          };
+          const r = await fetch(`${apiBase}/compose`, { method: "POST", headers, body: JSON.stringify(payload) });
+          const text = await r.text();
+          if (!r.ok) throw new Error(text || `${r.status} ${r.statusText}`);
+          const data = JSON.parse(text);
+          setLastComposeRaw(data);
+          setDraft(data.draft || "");
+          setCitations(data.citations || []);
+          setUsedHits(data.used_hits || 0);
+          setEngineUsed(data.engine || "");
+        } catch (e) { setError(String(e)); }
+        finally { setComposing(false); }
+      }
+
+      // === 新增：流式生成（POST + ReadableStream 解析 SSE）===
+      async function doComposeStream() {
+        setStreaming(true); setError("");
+        setDraft(""); setCitations([]); setUsedHits(0); setEngineUsed(engine==="auto"?"":engine);
+
+        try {
+          const payload = {
+            query, mode, k,
+            namespace: namespace || undefined,
+            canonicality: canonicality || undefined,
+            rerank,
+            engine: engine === "auto" ? undefined : engine,
+            language,
+            selected_ids: selectedIds.length ? selectedIds : undefined,
+          };
+          const r = await fetch(`${apiBase}/compose_stream`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+          if (!r.ok || !r.body) {
+            const t = await r.text();
+            throw new Error(t || `${r.status} ${r.statusText}`);
+          }
+
+          const reader = r.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE 格式：以 \n\n 分段，每段以 "data: " 開頭
+            let idx;
+            while ((idx = buffer.indexOf("\n\n")) !== -1) {
+              const chunk = buffer.slice(0, idx).trim();
+              buffer = buffer.slice(idx + 2);
+              if (!chunk.startsWith("data:")) continue;
+              const jsonStr = chunk.replace(/^data:\s*/, "");
+              try {
+                const obj = JSON.parse(jsonStr);
+                if (obj.token) {
+                  setDraft(prev => prev + obj.token);
+                }
+                if (obj.citations) {
+                  setCitations(obj.citations || []);
+                }
+                if (typeof obj.used_hits === "number") {
+                  setUsedHits(obj.used_hits);
+                }
+              } catch (e) {
+                // 忽略解析錯誤的行
+              }
+            }
+          }
+        } catch (e) {
+          setError(String(e));
+        } finally {
+          setStreaming(false);
+        }
+      }
+
+      function setLangQuick(code){ setLanguage(code); }
+      function copyDraft(){ navigator.clipboard.writeText(draft || ""); }
+      function downloadDraft(){
+        const blob = new Blob([JSON.stringify({
+          id:`draft_${Date.now()}`, namespace: namespace || "drafts", type:"draft",
+          title: query.slice(0,50) || "未命名",
+          summary:`由前端存檔，engine=${engineUsed||engine}`,
+          body:{ prompt: query, draft }, tags:["frontsave"],
+          canonicality: canonicality || "non", version:"1.0",
+          updated_at: new Date().toISOString().slice(0,10),
+        }, null, 2)], {type:"application/json;charset=utf-8"});
+        const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`${Date.now()}_draft.json`; a.click();
+      }
+      function copyCitations(){
+        const list = (citations||[]).map(c => (c.file_path||c.id)||"source").join("\n");
+        navigator.clipboard.writeText(list);
+      }
+
+      // === 新增：片段全選 / 清空 ===
+      function toggleSelectAll(){
+        if (selectedIds.length === hits.length) setSelectedIds([]);
+        else setSelectedIds(hits.map(h => h.id).filter(Boolean));
+      }
+
+      function toggleSelectOne(id){
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+      }
+
+      return (
+        <div className="min-h-screen bg-gray-50 p-6">
+          <div className="max-w-6xl mx-auto flex flex-col gap-6">
+            <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold">RAG Writer（前端單頁）</h1>
+                <p className="text-gray-500 text-sm">搜尋 /search、生成 /compose 與 /compose_stream（含語言、引擎切換與片段勾選）</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <Field label="API Base">
+                  <input value={apiBase} onChange={e=>setApiBase(e.target.value)} className="px-3 py-2 border rounded-lg w-64" />
+                </Field>
+                <Field label="x-api-key（若有開啟驗證）">
+                  <input value={apiKey} onChange={e=>setApiKey(e.target.value)} className="px-3 py-2 border rounded-lg w-56" placeholder="可留空" />
+                </Field>
+                <div className="flex flex-col gap-1">
+                  <Label>狀態</Label>
+                  <div className="flex items-center gap-3">
+                    <HealthPill health={health} />
+                    <button onClick={pingHealth} disabled={pinging} className="px-3 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm disabled:opacity-50">{pinging?"檢查中…":"Ping"}</button>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            <Section title="查詢與參數" right={
+              <div className="flex items-center gap-3">
+                <TextButton onClick={()=>setShowRaw(!showRaw)}>{showRaw?"隱藏 Raw":"顯示 Raw"}</TextButton>
+                {error && <span className="text-red-600 text-sm">{error}</span>}
+              </div>
+            }>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Field label="Query / 提示">
+                  <textarea value={query} onChange={e=>setQuery(e.target.value)} rows={3} className="px-3 py-2 border rounded-lg w-full" placeholder="以霽華與蒼辰雪山重逢為前情…" />
+                </Field>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="模式">
+                    <select value={mode} onChange={e=>setMode(e.target.value)} className="px-3 py-2 border rounded-lg w-full">
+                      <option value="strict">strict（嚴謹）</option>
+                      <option value="creative">creative（創作）</option>
+                    </select>
+                  </Field>
+                  <Field label="語言">
+                    <div className="flex gap-2">
+                      <select value={language} onChange={e=>setLanguage(e.target.value)} className="px-3 py-2 border rounded-lg w-full">
+                        <option value="zh-tw">繁體中文</option>
+                        <option value="zh-cn">简体中文</option>
+                        <option value="en">English</option>
+                        <option value="ja">日本語</option>
+                        <option value="ko">한국어</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                        <option value="es">Español</option>
+                      </select>
+                    </div>
+                  </Field>
+                  <Field label="引擎">
+                    <select value={engine} onChange={e=>setEngine(e.target.value)} className="px-3 py-2 border rounded-lg w-full">
+                      <option value="auto">auto（跟隨服務端設定）</option>
+                      <option value="ollama">ollama（本地）</option>
+                      <option value="openai">openai（雲端）</option>
+                    </select>
+                  </Field>
+                  <Field label={`Top-K：${k}`}>
+                    <input type="range" min={1} max={50} value={k} onChange={e=>setK(parseInt(e.target.value))} className="w-full" />
+                  </Field>
+                  <Field label="Rerank">
+                    <div className="flex items-center gap-3">
+                      <Toggle checked={rerank} onChange={setRerank} /><span className="text-sm text-gray-600">{rerank?"開啟":"關閉"}</span>
+                    </div>
+                  </Field>
+                  <Field label="Namespace（可選）">
+                    <input value={namespace} onChange={e=>setNamespace(e.target.value)} className="px-3 py-2 border rounded-lg w-full" placeholder="如 lore / drafts" />
+                  </Field>
+                  <Field label="Canonicality（可選）">
+                    <input value={canonicality} onChange={e=>setCanonicality(e.target.value)} className="px-3 py-2 border rounded-lg w-full" placeholder="canon / semi / non" />
+                  </Field>
+                </div>
+                <div className="flex flex-col gap-3 justify-end">
+                  <button onClick={doSearch} disabled={searching} className="px-4 py-2 rounded-xl bg-gray-900 text-white hover:bg-black disabled:opacity-50">{searching?"搜尋中…":"搜尋 /search"}</button>
+                  <div className="flex gap-3">
+                    <button onClick={doCompose} disabled={composing || streaming} className="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">{composing?"生成中…":"生成 /compose"}</button>
+                    <button onClick={doComposeStream} disabled={streaming || composing} className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">{streaming?"串流中…":"流式生成 /compose_stream"}</button>
+                  </div>
+                </div>
+              </div>
+              {showRaw && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold mb-1">/search raw</h3>
+                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs overflow-auto max-h-72">{JSON.stringify(lastSearchRaw, null, 2)}</pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold mb-1">/compose raw</h3>
+                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs overflow-auto max-h-72">{JSON.stringify(lastComposeRaw, null, 2)}</pre>
+                  </div>
+                </div>
+              )}
+            </Section>
+
+            <Section title="生成結果" right={
+              <div className="flex items-center gap-3">
+                <Chip>used hits: {usedHits}</Chip>
+                {engineUsed && <Chip>engine: {engineUsed}</Chip>}
+                <TextButton onClick={copyDraft}>複製</TextButton>
+                <TextButton onClick={downloadDraft}>下載 JSON</TextButton>
+                {Array.isArray(citations) && citations.length > 0 && <TextButton onClick={copyCitations}>複製引用列表</TextButton>}
+              </div>
+            }>
+              {draft ? (
+                <article className="prose max-w-none">
+                  <pre className="whitespace-pre-wrap text-sm leading-7">{draft}</pre>
+                </article>
+              ) : (
+                <p className="text-gray-500 text-sm">尚未生成，請先執行 /compose 或 /compose_stream。</p>
+              )}
+
+              {Array.isArray(citations) && citations.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-sm font-semibold mb-1">引用來源（不混入內文）：</div>
+                  <div className="flex flex-wrap gap-2">
+                    {citations.map((c,i)=>(<Chip key={i}>{(c.file_path||c.id)||"source"}{c.section? `§${c.section}` : ""}</Chip>))}
+                  </div>
+                </div>
+              )}
+            </Section>
+
+            <Section title={`命中片段（${hits.length}）`}>
+              {hits.length === 0 ? (
+                <p className="text-gray-500 text-sm">尚無結果，請先執行搜尋。</p>
+              ) : (
+                <ul className="space-y-3">
+                  {hits.map((h, idx) => {
+                    const id = h.id || `hit_${idx}`;
+                    const checked = selectedIds.includes(id);
+                    return (
+                      <li key={id} className="border rounded-xl p-3 bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Chip>#{h.rank}</Chip>
+                            {h.metadata?.file_path && <Chip>{h.metadata.file_path}</Chip>}
+                            {h.metadata?.section && <Chip>§ {h.metadata.section}</Chip>}
+                            {typeof h.score === "number" && <Chip>dist: {h.score.toFixed(4)}</Chip>}
+                            {typeof h.rerank_score === "number" && <Chip>rerank: {h.rerank_score.toFixed(3)}</Chip>}
+                            {id && <Chip>ID: {id}</Chip>}
+                          </div>
+                        </div>
+                        <div className="mt-2 text-sm whitespace-pre-wrap">{h.text}</div>
+                        {Array.isArray(h.highlights) && h.highlights.length > 0 && (
+                          <div className="mt-2 text-xs text-gray-600">
+                            <div className="font-semibold">highlights</div>
+                            <ul className="list-disc ml-5">
+                              {h.highlights.map((s, i) => (<li key={i}>{s}</li>))}
+                            </ul>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Section>
+
+            <footer className="text-center text-xs text-gray-400 py-6">RAG Writer • MIT License • 前端單頁示例</footer>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<RagWriter />);
+  </script>
+</body>
+</html>
