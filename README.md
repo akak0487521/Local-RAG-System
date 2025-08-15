@@ -1,2 +1,2 @@
 # Local RAG Starter
-See docker-compose.yml and scripts/.
+This is a simple local RAG system with a web interface with React.
