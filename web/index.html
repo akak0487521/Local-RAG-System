@@ -3,423 +3,625 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RAG Writer</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React 18 + Babel（瀏覽器即時編譯 JSX） -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body class="bg-gray-50">
-  <div id="root"></div>
-
-  <script type="text/babel">
-    const { useState, useMemo, useEffect } = React;
-
-    const Label = ({children}) => <label className="text-sm text-gray-600 font-medium">{children}</label>;
-    const Field = ({label, children}) => (
-      <div className="flex flex-col gap-1">
-        <Label>{label}</Label>{children}
-      </div>
-    );
-    const Section = ({title, right, children}) => (
-      <div className="bg-white rounded-2xl shadow p-5 border border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">{title}</h2>{right}
-        </div>{children}
-      </div>
-    );
-    const Chip = ({children}) => (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-800 mr-1 mb-1">{children}</span>
-    );
-    const Toggle = ({checked, onChange}) => (
-      <button onClick={()=>onChange(!checked)} className={`w-11 h-6 rounded-full transition relative ${checked ? "bg-green-500":"bg-gray-300"}`} aria-pressed={checked}>
-        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5":""}`} />
-      </button>
-    );
-    const TextButton = ({onClick, children, title}) => (
-      <button onClick={onClick} title={title} className="text-sm text-blue-600 hover:text-blue-800 underline">{children}</button>
-    );
-
-    function HealthPill({ health }){
-      if (!health) return <span className="text-xs text-gray-400">尚未檢查</span>;
-      const ok = health.status === "ok";
-      return (
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${ok?"bg-green-100 text-green-800":"bg-red-100 text-red-700"}`}>{ok? "OK":"ERR"}</span>
-          <span className="text-gray-600">docs: {health.docs_count ?? "?"}</span>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${health.backends?.ollama?.enabled? "bg-sky-100 text-sky-800":"bg-gray-100 text-gray-600"}`}>
-            ollama: {health.backends?.ollama?.enabled? (health.backends?.ollama?.model || "on"):"off"}
-          </span>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${health.backends?.openai?.enabled? "bg-purple-100 text-purple-800":"bg-gray-100 text-gray-600"}`}>
-            openai: {health.backends?.openai?.enabled? (health.backends?.openai?.model || "on"):"off"}
-          </span>
-        </div>
-      );
+  <title>RAG Chat — Chat UI + 參數面板</title>
+  <style>
+    :root{ --bg:#0b1020;--panel:#0f1530;--soft:#5462a4;--line:#223055;--text:#e7eaf6;--muted:#9aa6c3;--brand:#4b80ff;--brand-2:#30d0a5;--warn:#ffb454;--danger:#ff7272; 
+      /* 可自行調整的泡泡配色變數 */
+      --user-bubble:#349f23;             /* user 泡泡底色 */
+      --assistant-bubble-start:var(--soft);/* assistant 漸層開始 */
+      --assistant-bubble-end:#0d2a84;      /* assistant 漸層結束 */
+      --user-border:#2a3a66;              /* user 泡泡邊框色 */
+      --assistant-border:#28345f;         /* assistant 泡泡邊框色 */
     }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    .layout { grid-auto-flow: row; }
+    body { direction: ltr; }          /* 避免 RTL 影響欄序 */
+    .sidebar { grid-column: 1 !important; grid-row: 1 / 4; }
+    .main    { grid-column: 2 !important; grid-row: 1 / 4; min-width: 0; }
+    .right   { grid-column: 3 !important; grid-row: 1 / 4; }
+    
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif}
+    .layout{display:grid;grid-template-columns:270px minmax(0,1fr) 420px;grid-template-rows:auto 1fr auto;gap:0;height:100%;transition:grid-template-columns .2s ease;}
+    .layout.right-collapsed{grid-template-columns:270px minmax(0,1fr);}
+    .sidebar{grid-row:1/4;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
+    .side-top{padding:12px;border-bottom:1px solid var(--line);display:flex;gap:8px}
+    .side-top button{flex:1}
+    .side-scroll{flex:1;overflow:auto;padding:8px}
+    .side-item{padding:10px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;margin:8px;cursor:pointer}
+    .side-item .row{display:flex;align-items:center;gap:8px}
+    .side-item .title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .side-actions{display:flex;gap:6px}
+    .icon-btn{background:transparent;border:1px solid var(--line);color:#cfe0ff;border-radius:8px;padding:4px 6px;cursor:pointer}
+    .icon-btn:hover{background:#162149}
+    .icon-btn.danger{border-color:#5a1e2a;color:#ff9aa8}
 
-    function RagWriter() {
-      const defaultBase = `${window.location.origin}`; // 同源預設
-      // --- settings with localStorage ---
-      const [apiBase, setApiBase] = useState(localStorage.getItem("apiBase") || defaultBase);
-      const [apiKey, setApiKey] = useState(localStorage.getItem("apiKey") || "");
-      const [query, setQuery] = useState("");
-      const [mode, setMode] = useState(localStorage.getItem("mode") || "creative");
-      const [language, setLanguage] = useState(localStorage.getItem("language") || "zh-tw");
-      const [engine, setEngine] = useState(localStorage.getItem("engine") || "auto");
-      const [k, setK] = useState(parseInt(localStorage.getItem("k") || "6"));
-      const [rerank, setRerank] = useState(localStorage.getItem("rerank")==="false" ? false : true);
-      const [namespace, setNamespace] = useState(localStorage.getItem("namespace") || "");
-      const [canonicality, setCanonicality] = useState(localStorage.getItem("canonicality") || "");
+    .main{display:flex;flex-direction:column}
+    .header{padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    .pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted)}
+    .chat{flex:1;overflow:auto;padding:18px 20px}
+    .msg{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:12px;border-radius:14px;margin:12px 0;border:1px solid var(--line);background:var(--soft)}
+    /* 依角色分色 */
+    .msg.user{ background: var(--user-bubble); border-color: var(--user-border); }
+    .msg.assistant{ background: linear-gradient(180deg,var(--assistant-bubble-start), var(--assistant-bubble-end)); border-color: var(--assistant-border); }
+    .msg.assistant{ background: linear-gradient(180deg,var(--assistant-bubble-start), var(--assistant-bubble-end)); border-color: var(--assistant-border); }
+    .role{opacity:.8;font-weight:600}
+    .content{white-space:pre-wrap;line-height:1.6}
+    .composer{display:flex;gap:10px;padding:12px;border-top:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+    textarea{flex:1;min-height:72px;resize:vertical;padding:12px;border-radius:12px;background:#0d1330;color:var(--text);border:1px solid var(--line)}
+    button{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+    :root{
+        --copy-bg:#3b82f6;     /* 背景色 */
+        --copy-fg:#fff;        /* 文字色 */
+        --copy-border:#3b82f6; /* 邊框色 */
+        --copy-hover:#2f6bd6;  /* hover 背景 */
+    }
+    .msg .actions .copyBtn{
+        background: var(--copy-bg);
+        color: var(--copy-fg);
+        border-color: var(--copy-border);
+    }
+    .msg .actions .copyBtn:hover{
+        background: var(--copy-bg);
+    }
+    .msg .actions .saveBtn{
+        background: var(--copy-bg);
+        color: var(--copy-fg);
+        border-color: var(--copy-border);
+    }
+    .msg .actions .saveBtn:hover{
+        background: var(--copy-bg);
+    }
+    button.alt{background:var(--brand-2);color:#052018}
+    button.danger{background:var(--danger)}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    /* === Spinner (等待動畫) === */
+    .loader{ width:18px; height:18px; border-radius:50%; border:3px solid var(--brand); border-top-color: transparent; display:inline-block; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(1turn); } }
+    .msg.assistant.pending .content{ color: var(--muted); }
+    .msg.assistant.pending .content .loader{ margin:2px 2px -2px 2px; }
 
-      const [searching, setSearching] = useState(false);
-      const [composing, setComposing] = useState(false);
-      const [streaming, setStreaming] = useState(false);
+    .right{grid-row:1/4;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
+    .right.collapsed{display:none !important}
+    .right .head{padding:22.5px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .right .body{flex:1;overflow:auto;padding:12px}
+    .section{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px;background:#0f1834}
+    .section h3{margin:0 0 8px 0;font-size:14px;opacity:.9}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+    .row label{font-size:12px;opacity:.8}
+    .row input,.row select{background:#0d1330;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px}
+    .row input[type="text"], .row input[type="number"]{min-width:120px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 
-      const [hits, setHits] = useState([]);
-      const [selectedIds, setSelectedIds] = useState([]);            // === 新增：勾選片段 ===
-      const [draft, setDraft] = useState("");
-      const [citations, setCitations] = useState([]);
-      const [usedHits, setUsedHits] = useState(0);
-      const [engineUsed, setEngineUsed] = useState("");
-      const [error, setError] = useState("");
-      const [showRaw, setShowRaw] = useState(false);
-      const [lastSearchRaw, setLastSearchRaw] = useState(null);
-      const [lastComposeRaw, setLastComposeRaw] = useState(null);
-      const [health, setHealth] = useState(null);
-      const [pinging, setPinging] = useState(false);
+    .search{display:flex;gap:8px}
+    .search input{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1330;color:var(--text)}
+    .hit{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;background:#0e1632}
+    .hit h4{margin:.2em 0 .4em 0;font-size:14px;color:#d7def7}
+    .meta{color:var(--muted);font-size:12px}
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+    .toggle{display:flex;gap:6px;align-items:center}
+    .counter{margin-left:auto;color:var(--muted);font-size:12px}
+    .footer-note{color:var(--muted);font-size:12px;padding:6px 14px}
+    .badge{background:var(--brand-2);color:#052018;border-radius:999px;font-size:12px;padding:2px 8px;margin-left:6px}
+    .muted{color:var(--muted)}
 
-      useEffect(()=>{ localStorage.setItem("apiBase", apiBase); }, [apiBase]);
-      useEffect(()=>{ localStorage.setItem("apiKey", apiKey); }, [apiKey]);
-      useEffect(()=>{ localStorage.setItem("mode", mode); }, [mode]);
-      useEffect(()=>{ localStorage.setItem("language", language); }, [language]);
-      useEffect(()=>{ localStorage.setItem("engine", engine); }, [engine]);
-      useEffect(()=>{ localStorage.setItem("k", String(k)); }, [k]);
-      useEffect(()=>{ localStorage.setItem("rerank", String(rerank)); }, [rerank]);
-      useEffect(()=>{ localStorage.setItem("namespace", namespace); }, [namespace]);
-      useEffect(()=>{ localStorage.setItem("canonicality", canonicality); }, [canonicality]);
+    /* 把「在小螢幕時隱藏右欄」的斷點下修，避免一般筆電誤判 */
+    @media (max-width: 860px){ .layout{grid-template-columns: 1fr;} .sidebar{display:none} .right{display:none} }
+      /* actions 區塊與小按鈕 */
+    .msg .actions{ grid-column: 2; display:flex; gap:8px; align-items:center; margin-top:6px; }
+    button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <!-- 左：側欄（會話清單） -->
+    <aside class="sidebar">
+      <div class="side-top">
+        <button id="newBtn">＋ 新對話</button>
+        <button class="ghost" id="exportBtn">匯出</button>
+      </div>
+      <div class="side-scroll" id="convList"></div>
+      <div class="footer-note">本機儲存：<span class="muted">localStorage</span></div>
+    </aside>
 
-      const headers = useMemo(() => {
-        const h = {"Content-Type":"application/json"};
-        if (apiKey) h["x-api-key"] = apiKey;
-        return h;
-      }, [apiKey]);
+    <!-- 中：聊天主區 -->
+    <main class="main">
+      <div class="header">
+        <div class="pill">模型：<code id="modelLabel">(server env)</code></div>
+        <div class="pill">語言：<code id="langLabel">zh-TW</code></div>
+        <div class="pill">RAG：<span id="ragState">關</span></div>
+        <button class="ghost" id="toggleRight">顯示/隱藏右側面板</button>
+        <div class="pill" title="版本">v: chat-params-rag-right-2025-08-24</div>
+      </div>
+      <div id="chat" class="chat"></div>
+      <div class="composer">
+        <textarea id="input" placeholder="輸入訊息…（Shift+Enter 換行，Enter 送出）"></textarea>
+        <button id="sendBtn">送出</button>
+        <button class="ghost" id="stopBtn" disabled>停止</button>
+        <button class="alt" id="insertSnippetsBtn" title="把已勾選的片段插入到輸入框">插入所選片段</button>
+        <button class="ghost" id="clearSelBtn" title="取消所有勾選">清除片段</button>
+        <button class="danger" id="answerFromSnippetsBtn" title="不輸入問題，直接根據片段生成">僅用片段回答</button>
+      </div>
+    </main>
 
-      async function pingHealth(){
-        setPinging(true); setError("");
-        try{
-          const r = await fetch(`${apiBase}/health`, { headers });
-          const data = await r.json();
-          setHealth(data);
-        }catch(e){ setError(String(e)); }
-        finally { setPinging(false); }
-      }
-      useEffect(()=>{ pingHealth(); }, []);
-
-      async function doSearch() {
-        setSearching(true); setError(""); setSelectedIds([]);
-        try {
-          const payload = {
-            query, k,
-            namespace: namespace || undefined,
-            canonicality: canonicality || undefined,
-            rerank, highlight: true,
-          };
-          const r = await fetch(`${apiBase}/search`, { method: "POST", headers, body: JSON.stringify(payload) });
-          if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-          const data = await r.json();
-          setLastSearchRaw(data); setHits(data.hits || []);
-        } catch (e) { setError(String(e)); }
-        finally { setSearching(false); }
-      }
-
-      async function doCompose() {
-        setComposing(true); setError("");
-        try {
-          const payload = {
-            query, mode, k,
-            namespace: namespace || undefined,
-            canonicality: canonicality || undefined,
-            rerank,
-            engine: engine === "auto" ? undefined : engine,
-            language,
-            selected_ids: selectedIds.length ? selectedIds : undefined,   // === 帶入勾選 ===
-          };
-          const r = await fetch(`${apiBase}/compose`, { method: "POST", headers, body: JSON.stringify(payload) });
-          const text = await r.text();
-          if (!r.ok) throw new Error(text || `${r.status} ${r.statusText}`);
-          const data = JSON.parse(text);
-          setLastComposeRaw(data);
-          setDraft(data.draft || "");
-          setCitations(data.citations || []);
-          setUsedHits(data.used_hits || 0);
-          setEngineUsed(data.engine || "");
-        } catch (e) { setError(String(e)); }
-        finally { setComposing(false); }
-      }
-
-      // === 新增：流式生成（POST + ReadableStream 解析 SSE）===
-      async function doComposeStream() {
-        setStreaming(true); setError("");
-        setDraft(""); setCitations([]); setUsedHits(0); setEngineUsed(engine==="auto"?"":engine);
-
-        try {
-          const payload = {
-            query, mode, k,
-            namespace: namespace || undefined,
-            canonicality: canonicality || undefined,
-            rerank,
-            engine: engine === "auto" ? undefined : engine,
-            language,
-            selected_ids: selectedIds.length ? selectedIds : undefined,
-          };
-          const r = await fetch(`${apiBase}/compose_stream`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-          });
-          if (!r.ok || !r.body) {
-            const t = await r.text();
-            throw new Error(t || `${r.status} ${r.statusText}`);
-          }
-
-          const reader = r.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            // SSE 格式：以 \n\n 分段，每段以 "data: " 開頭
-            let idx;
-            while ((idx = buffer.indexOf("\n\n")) !== -1) {
-              const chunk = buffer.slice(0, idx).trim();
-              buffer = buffer.slice(idx + 2);
-              if (!chunk.startsWith("data:")) continue;
-              const jsonStr = chunk.replace(/^data:\s*/, "");
-              try {
-                const obj = JSON.parse(jsonStr);
-                if (obj.token) {
-                  setDraft(prev => prev + obj.token);
-                }
-                if (obj.citations) {
-                  setCitations(obj.citations || []);
-                }
-                if (typeof obj.used_hits === "number") {
-                  setUsedHits(obj.used_hits);
-                }
-              } catch (e) {
-                // 忽略解析錯誤的行
-              }
-            }
-          }
-        } catch (e) {
-          setError(String(e));
-        } finally {
-          setStreaming(false);
-        }
-      }
-
-      function setLangQuick(code){ setLanguage(code); }
-      function copyDraft(){ navigator.clipboard.writeText(draft || ""); }
-      function downloadDraft(){
-        const blob = new Blob([JSON.stringify({
-          id:`draft_${Date.now()}`, namespace: namespace || "drafts", type:"draft",
-          title: query.slice(0,50) || "未命名",
-          summary:`由前端存檔，engine=${engineUsed||engine}`,
-          body:{ prompt: query, draft }, tags:["frontsave"],
-          canonicality: canonicality || "non", version:"1.0",
-          updated_at: new Date().toISOString().slice(0,10),
-        }, null, 2)], {type:"application/json;charset=utf-8"});
-        const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`${Date.now()}_draft.json`; a.click();
-      }
-      function copyCitations(){
-        const list = (citations||[]).map(c => (c.file_path||c.id)||"source").join("\n");
-        navigator.clipboard.writeText(list);
-      }
-
-      // === 新增：片段全選 / 清空 ===
-      function toggleSelectAll(){
-        if (selectedIds.length === hits.length) setSelectedIds([]);
-        else setSelectedIds(hits.map(h => h.id).filter(Boolean));
-      }
-
-      function toggleSelectOne(id){
-        setSelectedIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
-      }
-
-      return (
-        <div className="min-h-screen bg-gray-50 p-6">
-          <div className="max-w-6xl mx-auto flex flex-col gap-6">
-            <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-              <div>
-                <h1 className="text-2xl font-bold">RAG Writer（前端單頁）</h1>
-                <p className="text-gray-500 text-sm">搜尋 /search、生成 /compose 與 /compose_stream（含語言、引擎切換與片段勾選）</p>
-              </div>
-              <div className="flex items-center gap-4">
-                <Field label="API Base">
-                  <input value={apiBase} onChange={e=>setApiBase(e.target.value)} className="px-3 py-2 border rounded-lg w-64" />
-                </Field>
-                <Field label="x-api-key（若有開啟驗證）">
-                  <input value={apiKey} onChange={e=>setApiKey(e.target.value)} className="px-3 py-2 border rounded-lg w-56" placeholder="可留空" />
-                </Field>
-                <div className="flex flex-col gap-1">
-                  <Label>狀態</Label>
-                  <div className="flex items-center gap-3">
-                    <HealthPill health={health} />
-                    <button onClick={pingHealth} disabled={pinging} className="px-3 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm disabled:opacity-50">{pinging?"檢查中…":"Ping"}</button>
-                  </div>
-                </div>
-              </div>
-            </header>
-
-            <Section title="查詢與參數" right={
-              <div className="flex items-center gap-3">
-                <TextButton onClick={()=>setShowRaw(!showRaw)}>{showRaw?"隱藏 Raw":"顯示 Raw"}</TextButton>
-                {error && <span className="text-red-600 text-sm">{error}</span>}
-              </div>
-            }>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Field label="Query / 提示">
-                  <textarea value={query} onChange={e=>setQuery(e.target.value)} rows={3} className="px-3 py-2 border rounded-lg w-full" placeholder="以霽華與蒼辰雪山重逢為前情…" />
-                </Field>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="模式">
-                    <select value={mode} onChange={e=>setMode(e.target.value)} className="px-3 py-2 border rounded-lg w-full">
-                      <option value="strict">strict（嚴謹）</option>
-                      <option value="creative">creative（創作）</option>
-                    </select>
-                  </Field>
-                  <Field label="語言">
-                    <div className="flex gap-2">
-                      <select value={language} onChange={e=>setLanguage(e.target.value)} className="px-3 py-2 border rounded-lg w-full">
-                        <option value="zh-tw">繁體中文</option>
-                        <option value="zh-cn">简体中文</option>
-                        <option value="en">English</option>
-                        <option value="ja">日本語</option>
-                        <option value="ko">한국어</option>
-                        <option value="fr">Français</option>
-                        <option value="de">Deutsch</option>
-                        <option value="es">Español</option>
-                      </select>
-                    </div>
-                  </Field>
-                  <Field label="引擎">
-                    <select value={engine} onChange={e=>setEngine(e.target.value)} className="px-3 py-2 border rounded-lg w-full">
-                      <option value="auto">auto（跟隨服務端設定）</option>
-                      <option value="ollama">ollama（本地）</option>
-                      <option value="openai">openai（雲端）</option>
-                    </select>
-                  </Field>
-                  <Field label={`Top-K：${k}`}>
-                    <input type="range" min={1} max={50} value={k} onChange={e=>setK(parseInt(e.target.value))} className="w-full" />
-                  </Field>
-                  <Field label="Rerank">
-                    <div className="flex items-center gap-3">
-                      <Toggle checked={rerank} onChange={setRerank} /><span className="text-sm text-gray-600">{rerank?"開啟":"關閉"}</span>
-                    </div>
-                  </Field>
-                  <Field label="Namespace（可選）">
-                    <input value={namespace} onChange={e=>setNamespace(e.target.value)} className="px-3 py-2 border rounded-lg w-full" placeholder="如 lore / drafts" />
-                  </Field>
-                  <Field label="Canonicality（可選）">
-                    <input value={canonicality} onChange={e=>setCanonicality(e.target.value)} className="px-3 py-2 border rounded-lg w-full" placeholder="canon / semi / non" />
-                  </Field>
-                </div>
-                <div className="flex flex-col gap-3 justify-end">
-                  <button onClick={doSearch} disabled={searching} className="px-4 py-2 rounded-xl bg-gray-900 text-white hover:bg-black disabled:opacity-50">{searching?"搜尋中…":"搜尋 /search"}</button>
-                  <div className="flex gap-3">
-                    <button onClick={doCompose} disabled={composing || streaming} className="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">{composing?"生成中…":"生成 /compose"}</button>
-                    <button onClick={doComposeStream} disabled={streaming || composing} className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">{streaming?"串流中…":"流式生成 /compose_stream"}</button>
-                  </div>
-                </div>
-              </div>
-              {showRaw && (
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="text-sm font-semibold mb-1">/search raw</h3>
-                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs overflow-auto max-h-72">{JSON.stringify(lastSearchRaw, null, 2)}</pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold mb-1">/compose raw</h3>
-                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs overflow-auto max-h-72">{JSON.stringify(lastComposeRaw, null, 2)}</pre>
-                  </div>
-                </div>
-              )}
-            </Section>
-
-            <Section title="生成結果" right={
-              <div className="flex items-center gap-3">
-                <Chip>used hits: {usedHits}</Chip>
-                {engineUsed && <Chip>engine: {engineUsed}</Chip>}
-                <TextButton onClick={copyDraft}>複製</TextButton>
-                <TextButton onClick={downloadDraft}>下載 JSON</TextButton>
-                {Array.isArray(citations) && citations.length > 0 && <TextButton onClick={copyCitations}>複製引用列表</TextButton>}
-              </div>
-            }>
-              {draft ? (
-                <article className="prose max-w-none">
-                  <pre className="whitespace-pre-wrap text-sm leading-7">{draft}</pre>
-                </article>
-              ) : (
-                <p className="text-gray-500 text-sm">尚未生成，請先執行 /compose 或 /compose_stream。</p>
-              )}
-
-              {Array.isArray(citations) && citations.length > 0 && (
-                <div className="mt-4">
-                  <div className="text-sm font-semibold mb-1">引用來源（不混入內文）：</div>
-                  <div className="flex flex-wrap gap-2">
-                    {citations.map((c,i)=>(<Chip key={i}>{(c.file_path||c.id)||"source"}{c.section? `§${c.section}` : ""}</Chip>))}
-                  </div>
-                </div>
-              )}
-            </Section>
-
-            <Section title={`命中片段（${hits.length}）`}>
-              {hits.length === 0 ? (
-                <p className="text-gray-500 text-sm">尚無結果，請先執行搜尋。</p>
-              ) : (
-                <ul className="space-y-3">
-                  {hits.map((h, idx) => {
-                    const id = h.id || `hit_${idx}`;
-                    const checked = selectedIds.includes(id);
-                    return (
-                      <li key={id} className="border rounded-xl p-3 bg-gray-50">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Chip>#{h.rank}</Chip>
-                            {h.metadata?.file_path && <Chip>{h.metadata.file_path}</Chip>}
-                            {h.metadata?.section && <Chip>§ {h.metadata.section}</Chip>}
-                            {typeof h.score === "number" && <Chip>dist: {h.score.toFixed(4)}</Chip>}
-                            {typeof h.rerank_score === "number" && <Chip>rerank: {h.rerank_score.toFixed(3)}</Chip>}
-                            {id && <Chip>ID: {id}</Chip>}
-                          </div>
-                        </div>
-                        <div className="mt-2 text-sm whitespace-pre-wrap">{h.text}</div>
-                        {Array.isArray(h.highlights) && h.highlights.length > 0 && (
-                          <div className="mt-2 text-xs text-gray-600">
-                            <div className="font-semibold">highlights</div>
-                            <ul className="list-disc ml-5">
-                              {h.highlights.map((s, i) => (<li key={i}>{s}</li>))}
-                            </ul>
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Section>
-
-            <footer className="text-center text-xs text-gray-400 py-6">RAG Writer • MIT License • 前端單頁示例</footer>
+    <!-- 右：參數 + RAG 片段面板（RAG 畫面在右方列） -->
+    <aside class="right" id="rightPane">
+      <div class="head">
+        <strong>參數設定 & RAG 片段</strong>
+        <span class="badge" id="selCount">0</span>
+        <span class="muted" id="ragHint"></span>
+      </div>
+      <div class="body">
+        <!-- 參數設定 -->
+        <div class="section">
+          <h3>連線</h3>
+          <div class="grid2">
+            <div class="row"><label>API Base</label><input id="apiBaseInput" type="text" placeholder="預設同源" /></div>
+            <div class="row"><label>x-api-key（可選）</label><input id="apiKeyInput" type="text" placeholder="可留空" /></div>
+          </div>
+          <div class="row">
+            <button id="pingBtn" class="ghost">Ping /health</button>
+            <span id="healthTxt" class="muted">尚未檢查</span>
           </div>
         </div>
-      );
-    }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<RagWriter />);
-  </script>
+        <div class="section">
+          <h3>生成參數</h3>
+          <div class="grid2">
+            <div class="row"><label>模式</label><select id="modeSel"><option value="strict">strict（嚴謹）</option><option value="creative" selected>creative（創作）</option></select></div>
+            <div class="row"><label>語言</label><select id="langSel"><option value="zh-TW" selected>繁體中文</option><option value="zh-CN">简体中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option></select></div>
+            <div class="row"><label>引擎</label><select id="engineSel"><option value="auto" selected>auto（服務端決定）</option><option value="ollama">ollama（本地）</option><option value="openai">openai（雲端）</option></select></div>
+            <div class="row"><label>目標字數（可選）</label><input id="lenInput" type="text" placeholder='如 "500-700" 或 "800"' /></div>
+            <div class="row"><label>Thread ID（可留空）</label><input id="threadInput" type="text" placeholder="自動產生" /></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>檢索參數</h3>
+          <div class="grid2">
+            <div class="row"><label>Top-K：<span id="kVal">6</span></label><input id="kRange" type="range" min="1" max="50" value="6" /></div>
+            <div class="row"><label>Rerank</label><select id="rerankSel"><option value="true" selected>開</option><option value="false">關</option></select></div>
+            <div class="row"><label>Namespace（可選）</label><input id="nsInput" type="text" placeholder="如 lore / drafts" /></div>
+            <div class="row"><label>Canonicality（可選）</label><input id="canonInput" type="text" placeholder="canon / semi / non" /></div>
+          </div>
+          <div class="row">
+            <button id="saveParamsBtn" class="ghost">保存設定</button>
+            <button id="resetParamsBtn" class="ghost">重設預設值</button>
+          </div>
+        </div>
+
+        <!-- RAG 搜尋 + 片段列表（右方列） -->
+        <div class="section">
+          <h3>資料片段（RAG）</h3>
+          <div class="search">
+            <input id="q" placeholder="搜尋知識庫或文件…" />
+            <button id="searchBtn">搜尋</button>
+          </div>
+          <div class="controls">
+            <label class="toggle"><input type="checkbox" id="ragToggle"/> 啟用 RAG</label>
+            <label class="toggle"><input type="radio" name="injectWhere" value="system" checked/> 注入 system</label>
+            <label class="toggle"><input type="radio" name="injectWhere" value="user"/> 附在提問後</label>
+            <button class="ghost" id="selectAllBtn">全選</button>
+            <button class="ghost" id="selectNoneBtn">全不選</button>
+            <span class="counter" id="resultInfo"></span>
+          </div>
+          <div id="hits"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+// ====== 狀態 ======
+let controller = null;                  // 取消用
+let sessions = JSON.parse(localStorage.getItem('sessions')||'{}');
+let currentId = localStorage.getItem('currentId') || newId();
+if(!sessions[currentId]) sessions[currentId] = { title:'新對話', messages:[] };
+let selected = new Map(); // id -> doc
+let ragEnabled = JSON.parse(localStorage.getItem('ragEnabled')||'false');
+let injectWhere = localStorage.getItem('injectWhere') || 'system';
+
+// 參數（保存到 localStorage）
+const params = {
+  apiBase: localStorage.getItem('apiBase') || '',
+  apiKey: localStorage.getItem('apiKey') || '',
+  mode: localStorage.getItem('mode') || 'creative',
+  lang: localStorage.getItem('lang') || 'zh-TW',
+  engine: localStorage.getItem('engine') || 'auto',
+  targetLength: localStorage.getItem('targetLength') || '',
+  threadId: localStorage.getItem('threadId') || '',
+  k: parseInt(localStorage.getItem('k') || '6'),
+  rerank: (localStorage.getItem('rerank')||'true') === 'true',
+  namespace: localStorage.getItem('namespace') || '',
+  canonicality: localStorage.getItem('canonicality') || ''
+};
+function saveParams(){ for(const [k,v] of Object.entries(params)) localStorage.setItem(k, typeof v==='boolean'? String(v): String(v)); }
+
+// ====== DOM ======
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const stopBtn = document.getElementById('stopBtn');
+const convList = document.getElementById('convList');
+const newBtn = document.getElementById('newBtn');
+const exportBtn = document.getElementById('exportBtn');
+const modelLabel = document.getElementById('modelLabel');
+const langLabel = document.getElementById('langLabel');
+const ragState = document.getElementById('ragState');
+const q = document.getElementById('q');
+const searchBtn = document.getElementById('searchBtn');
+const hitsEl = document.getElementById('hits');
+const selCount = document.getElementById('selCount');
+const resultInfo = document.getElementById('resultInfo');
+const ragToggle = document.getElementById('ragToggle');
+const ragHint = document.getElementById('ragHint');
+const insertSnippetsBtn = document.getElementById('insertSnippetsBtn');
+const clearSelBtn = document.getElementById('clearSelBtn');
+const answerFromSnippetsBtn = document.getElementById('answerFromSnippetsBtn');
+const selectAllBtn = document.getElementById('selectAllBtn');
+const selectNoneBtn = document.getElementById('selectNoneBtn');
+const rightPane = document.getElementById('rightPane');
+const toggleRightBtn = document.getElementById('toggleRight');
+const layoutEl = document.querySelector('.layout');
+let rightCollapsed = JSON.parse(localStorage.getItem('rightCollapsed') || 'false');
+function applyRightCollapsed(){
+  if(rightCollapsed){ rightPane.classList.add('collapsed'); layoutEl.classList.add('right-collapsed'); }
+  else{ rightPane.classList.remove('collapsed'); layoutEl.classList.remove('right-collapsed'); }
+  updateRightToggleLabel();
+}
+function updateRightToggleLabel(){ toggleRightBtn.textContent = rightCollapsed ? '顯示右側面板' : '隱藏右側面板'; }
+
+// ====== 初始化 ======
+renderSidebar();
+renderAll();
+applyRightCollapsed();
+
+// 初始化 UI 值
+apiBaseInput.value = params.apiBase;
+apiKeyInput.value = params.apiKey;
+modeSel.value = params.mode;
+langSel.value = params.lang; langLabel.textContent = params.lang;
+engineSel.value = params.engine;
+lenInput.value = params.targetLength;
+threadInput.value = params.threadId;
+kRange.value = params.k; kVal.textContent = params.k;
+rerankSel.value = String(params.rerank);
+nsInput.value = params.namespace;
+canonInput.value = params.canonicality;
+
+ragToggle.checked = ragEnabled; updateBadges();
+for(const r of document.querySelectorAll('input[name="injectWhere"]')){ if(r.value===injectWhere) r.checked = true; }
+
+// ====== 事件 ======
+newBtn.onclick = () => { newChat(); };
+exportBtn.onclick = () => exportData();
+
+toggleRightBtn.onclick = () => {
+  rightCollapsed = !rightCollapsed;
+  localStorage.setItem('rightCollapsed', JSON.stringify(rightCollapsed));
+  applyRightCollapsed();
+};
+
+apiBaseInput.onchange = () => { params.apiBase = apiBaseInput.value.trim(); saveParams(); };
+apiKeyInput.onchange = () => { params.apiKey = apiKeyInput.value; saveParams(); };
+modeSel.onchange = () => { params.mode = modeSel.value; saveParams(); };
+langSel.onchange = () => { params.lang = langSel.value; langLabel.textContent = params.lang; saveParams(); };
+engineSel.onchange = () => { params.engine = engineSel.value; saveParams(); };
+lenInput.onchange = () => { params.targetLength = lenInput.value; saveParams(); };
+threadInput.onchange = () => { params.threadId = threadInput.value; saveParams(); };
+kRange.oninput = () => { kVal.textContent = kRange.value; };
+kRange.onchange = () => { params.k = parseInt(kRange.value); saveParams(); };
+rerankSel.onchange = () => { params.rerank = rerankSel.value==='true'; saveParams(); };
+nsInput.onchange = () => { params.namespace = nsInput.value; saveParams(); };
+canonInput.onchange = () => { params.canonicality = canonInput.value; saveParams(); };
+
+saveParamsBtn.onclick = saveParams;
+resetParamsBtn.onclick = () => { Object.assign(params, { apiBase:'', apiKey:'', mode:'creative', lang:'zh-TW', engine:'auto', targetLength:'', threadId:'', k:6, rerank:true, namespace:'', canonicality:'' }); saveParams(); location.reload(); };
+
+pingBtn.onclick = async () => {
+  healthTxt.textContent = '檢查中…';
+  try{
+    const res = await fetch(getApiBase()+ '/health', { headers: buildHeaders() });
+    const data = await res.json();
+    const ok = (data && (data.status==='ok' || data.ok));
+    healthTxt.textContent = ok? `OK · docs=${data.docs_count??'?'} · ollama=${data.backends?.ollama?.enabled? 'on':'off'} · openai=${data.backends?.openai?.enabled? 'on':'off'}` : 'ERR';
+  }catch(e){ healthTxt.textContent = 'ERR'; }
+};
+
+searchBtn.onclick = () => doSearch();
+ragToggle.onchange = () => { ragEnabled = ragToggle.checked; localStorage.setItem('ragEnabled', JSON.stringify(ragEnabled)); updateBadges(); };
+for(const r of document.querySelectorAll('input[name="injectWhere"]')){ r.onchange = ()=>{ injectWhere = document.querySelector('input[name="injectWhere"]:checked').value; localStorage.setItem('injectWhere', injectWhere); }; }
+selectAllBtn.onclick = ()=> allHitChecks(true);
+selectNoneBtn.onclick = ()=> allHitChecks(false);
+
+sendBtn.onclick = () => send();
+stopBtn.onclick = () => { if(controller){ controller.abort(); stopBtn.disabled = true; } };
+insertSnippetsBtn.onclick = () => insertSelectedToInput();
+clearSelBtn.onclick = () => { selected.clear(); updateBadges(); refreshHitChecks(); };
+answerFromSnippetsBtn.onclick = () => answerBySnippetsOnly();
+
+inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+
+// ====== UI Render ======
+function renderAll(){ chatEl.innerHTML = ''; const { messages } = sessions[currentId]; for(const m of messages){ appendBubble(m.role, m.content); } chatEl.scrollTop = chatEl.scrollHeight; }
+function appendBubble(role, content){ const wrap = document.createElement('div'); wrap.className = `msg ${role}`; wrap.innerHTML = `<div class="role">${role}</div><div class="content"></div>`; wrap.querySelector('.content').textContent = content; chatEl.appendChild(wrap); }
+function renderSidebar(){ convList.innerHTML = ''; Object.entries(sessions).forEach(([id, s])=>{ const item = document.createElement('div'); item.className = 'side-item'; item.dataset.id = id; item.innerHTML = `
+      <div class="row">
+        <span class="title" title="雙擊重新命名">${escapeHtml(s.title || '未命名對話')}</span>
+        <span class="side-actions">
+          <button class="icon-btn rename" title="重新命名">✎</button>
+          <button class="icon-btn danger del" title="刪除對話">🗑</button>
+        </span>
+      </div>`;
+    item.onclick = (ev)=>{ if(ev.target.closest('.icon-btn')) return; currentId = id; localStorage.setItem('currentId', currentId); renderAll(); highlightSidebar(); };
+    item.ondblclick = ()=> renameChat(id);
+    item.querySelector('.rename').onclick = (e)=>{ e.stopPropagation(); renameChat(id); };
+    item.querySelector('.del').onclick = (e)=>{ e.stopPropagation(); deleteChat(id); };
+    convList.appendChild(item); }); highlightSidebar(); }
+function highlightSidebar(){ [...convList.children].forEach(el=>{ el.style.background = (el.dataset.id===currentId) ? '#132048' : 'transparent'; }); }
+function updateBadges(){ ragState.textContent = ragEnabled? '開' : '關'; selCount.textContent = selected.size; }
+function newId(){ return 'c'+Math.random().toString(36).slice(2,10); }
+function newChat(){ currentId = newId(); sessions[currentId] = { title:'新對話', messages:[] }; localStorage.setItem('currentId', currentId); persist(); renderSidebar(); renderAll(); updateBadges(); }
+function persist(){ localStorage.setItem('sessions', JSON.stringify(sessions)); }
+
+function renameChat(id){ const cur = (sessions[id]?.title || '未命名對話'); const name = prompt('對話名稱', cur); if(name===null) return; const t = name.trim(); if(!t) return; sessions[id].title = t; persist(); renderSidebar(); }
+function deleteChat(id){ if(!confirm('確定要刪除此對話？此操作無法復原。')) return; delete sessions[id]; const keys = Object.keys(sessions); if(keys.length===0){ currentId = newId(); sessions[currentId] = { title:'新對話', messages:[] }; } else if(id===currentId){ currentId = keys[0]; } localStorage.setItem('currentId', currentId); persist(); renderSidebar(); renderAll(); updateBadges(); }
+
+// ====== API Util ======
+function getApiBase(){ return params.apiBase || window.location.origin; }
+function buildHeaders(extra={}){ const h = { ...extra }; if(params.apiKey) h['x-api-key'] = params.apiKey; return h; }
+
+// ====== 搜尋（容錯多格式） ======
+async function doSearch(){ const query = q.value.trim(); if(!query){ hitsEl.innerHTML=''; resultInfo.textContent=''; return; } hitsEl.innerHTML = '<div class="muted">搜尋中…</div>'; try{ const body = { query, k: params.k, namespace: params.namespace || undefined, canonicality: params.canonicality || undefined, rerank: params.rerank, highlight: true };
+    // 優先 POST /search
+    let res = await fetch(getApiBase()+ '/search', { method:'POST', headers: { 'Content-Type':'application/json', ...buildHeaders() }, body: JSON.stringify(body) });
+    if(!res.ok){ // 後援 GET /search?q=
+      res = await fetch(getApiBase()+ '/search?q='+encodeURIComponent(query), { headers: buildHeaders() });
+    }
+    if(!res.ok) throw new Error('Search '+res.status);
+    const data = await res.json(); const items = normalizeSearch(data); renderHits(items); resultInfo.textContent = `共 ${items.length} 筆`; ragHint.textContent = items.length? '' : '（無結果）';
+  }catch(err){ hitsEl.innerHTML = `<div class=\"muted\">搜尋失敗：${(err&&err.message)||err}</div>`; ragHint.textContent = '（/search 不可用）'; } }
+
+function normalizeSearch(data){
+  const out = [];
+  try{
+    // 1) 常見：直接給 hits: []
+    if (Array.isArray(data?.hits)){
+      for(const r of data.hits){
+        out.push({
+          id: r.id || r.metadata?.id || r.doc_id || randomId(),
+          text: r.text || r.document || r.content || r.documents || '',
+          meta: r.metadata || r.meta || {},
+          score: r.score ?? r.distance ?? r.similarity
+        });
+      }
+      return out;
+    }
+    // 2) Chroma v0.5 之類：data.results.documents / metadatas / ids
+    if (data?.results && (Array.isArray(data.results.documents) || Array.isArray(data.results.metadatas))){
+      const docs = data.results.documents?.[0] || [];
+      const metas = data.results.metadatas?.[0] || [];
+      const ids = data.results.ids?.[0] || [];
+      const dists = data.results.distances?.[0] || [];
+      for(let i=0;i<docs.length;i++){
+        out.push({ id: ids[i] || randomId(), text: String(docs[i]||''), meta: metas[i]||{}, score: dists[i] });
+      }
+      return out;
+    }
+    // 3) 舊 Chroma：data.documents / metadatas / ids
+    if (Array.isArray(data?.documents)){
+      const docs = data.documents?.[0] || [];
+      const metas = data.metadatas?.[0] || [];
+      const ids = data.ids?.[0] || [];
+      const dists = data.distances?.[0] || [];
+      for(let i=0;i<docs.length;i++){
+        out.push({ id: ids[i] || randomId(), text: String(docs[i]||''), meta: metas[i]||{}, score: dists[i] });
+      }
+      return out;
+    }
+    // 4) matches: []
+    if (Array.isArray(data?.matches)){
+      for(const r of data.matches){
+        out.push({ id: r.id || randomId(), text: r.document || r.text || '', meta: r.metadata || {}, score: r.distance || r.score });
+      }
+      return out;
+    }
+    // 5) results: [] 每項是物件
+    if (Array.isArray(data?.results)){
+      for(const r of data.results){
+        out.push({ id: r.id || r.metadata?.id || randomId(), text: r.text || r.document || r.content || '', meta: r.metadata || {}, score: r.score ?? r.distance });
+      }
+      return out;
+    }
+    // 6) 根就是陣列
+    if (Array.isArray(data)){
+      for(const r of data){ out.push({ id: r.id || randomId(), text: r.text || r.content || r.document || '', meta: r.metadata || {} }); }
+      return out;
+    }
+  }catch(e){ console.warn('normalizeSearch error', e, data); }
+  return out;
+}
+function randomId(){ return Math.random().toString(36).slice(2,9); }
+function renderHits(items){ hitsEl.innerHTML=''; for(const it of items){ const div = document.createElement('div'); div.className = 'hit'; const ckId = 'ck_'+(it.id||randomId()).replace(/[^a-zA-Z0-9_-]/g,''); const metaLine = Object.entries(it.meta||{}).slice(0,3).map(([k,v])=>`${k}: ${v}`).join(' · '); div.innerHTML = `
+    <label style="display:flex;gap:8px;align-items:flex-start">
+      <input type="checkbox" id="${ckId}">
+      <div>
+        <h4>${(it.meta?.title)||it.meta?.file_path||'片段'}</h4>
+        <div class="meta">${metaLine||'—'}</div>
+        <div style="margin-top:6px;color:#dfe6ff;font-size:13px;white-space:pre-wrap">${escapeHtml((it.text||'').slice(0,600))}${(it.text&&it.text.length>600)?'…':''}</div>
+      </div>
+    </label>`; const ck = div.querySelector('input'); ck.checked = selected.has(it.id); ck.onchange = () => { if(ck.checked) selected.set(it.id, it); else selected.delete(it.id); updateBadges(); }; hitsEl.appendChild(div); } }
+function refreshHitChecks(){ for(const div of hitsEl.querySelectorAll('.hit')){ const ck = div.querySelector('input[type="checkbox"]'); if(!ck) continue; const title = div.querySelector('h4').textContent.trim(); const idFromTitle = [...selected.keys()].find(k=> (selected.get(k)?.meta?.title||selected.get(k)?.meta?.file_path||'')===title); ck.checked = !!idFromTitle; } }
+function allHitChecks(flag){ for(const div of hitsEl.querySelectorAll('.hit')){ const ck = div.querySelector('input[type="checkbox"]'); if(!ck) continue; ck.checked = flag; const title = div.querySelector('h4').textContent.trim(); const block = { id:title, text:div.querySelector('div[style]')?.innerText||'', meta:{ title } }; if(flag) selected.set(title, block); else selected.delete(title);} updateBadges(); }
+function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+// ====== 發送與串流 ======
+async function send(){ const text = inputEl.value.trim(); if(!text && !(ragEnabled && selected.size>0)) return; inputEl.value = '';
+  const sess = sessions[currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'' }; sess.messages.push(assistant); persist(); const bubble = document.createElement('div'); bubble.className = 'msg assistant pending'; bubble.innerHTML = `<div class=\"role\">assistant<\/div><div class=\"content\"><span class=\"loader\" aria-label=\"thinking\"><\/span><\/div>`; const contentEl = bubble.querySelector('.content');
+  // 在這一輪對話綁定停止鍵，能移除等待動畫
+  let gotAny = false;
+  const prevStopHandler = stopBtn.onclick;
+  stopBtn.onclick = () => {
+    if(controller){ controller.abort(); stopBtn.disabled = true; }
+    bubble.classList.remove('pending');
+    if(!assistant.content){
+      assistant.content = '[已停止]';
+      contentEl.textContent = assistant.content;
+      persist();
+    }
+    // 還原舊的 handler，避免影響下一輪
+    setTimeout(()=>{ stopBtn.onclick = prevStopHandler; }, 0);
+  }; chatEl.appendChild(bubble); chatEl.scrollTop = chatEl.scrollHeight;
+  const payload = buildPayload(sess.messages, text);
+  controller = new AbortController(); sendBtn.disabled = true; stopBtn.disabled = false; try{
+    const res = await fetch(getApiBase()+ '/compose_stream', { method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'text/event-stream, text/plain', ...buildHeaders() }, body: JSON.stringify(payload), signal: controller.signal });
+    if(!res.ok || !res.body){ const t = await res.text().catch(()=>""); throw new Error(t || `HTTP ${res.status}`); }
+    const reader = res.body.getReader(); const decoder = new TextDecoder('utf-8'); let buffer = '';
+    async function flush(done=false){ let idx; while((idx = buffer.indexOf('\n\n')) !== -1){ const raw = buffer.slice(0, idx).trim(); buffer = buffer.slice(idx+2); handleStreamChunk(raw); } if(done && buffer.trim()){ handleStreamChunk(buffer.trim()); buffer = ''; } }
+    function handleStreamChunk(raw){ if(!raw) return; // 支援兩種：純文字 / SSE data: JSON
+      if(raw.startsWith('data:')){ const dataStr = raw.replace(/^data:\s*/, ''); if(dataStr==='[DONE]') return; try{ const obj = JSON.parse(dataStr); if(typeof obj.token==='string'){
+          if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; }
+          assistant.content += obj.token; contentEl.textContent = assistant.content; chatEl.scrollTop = chatEl.scrollHeight; persist(); } if(typeof obj.used_hits==='number'){ ragHint.textContent = `used_hits=${obj.used_hits}`; } if(typeof obj.engine==='string'){ ragHint.textContent += (ragHint.textContent?' · ':'')+`engine=${obj.engine}`; } }catch(e){ assistant.content += dataStr; contentEl.textContent = assistant.content; }
+      }else{ if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; } assistant.content += raw; contentEl.textContent = assistant.content; chatEl.scrollTop = chatEl.scrollHeight; persist(); }
+    }
+    while(true){ const {value, done} = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), {stream: !done}); await flush(done); if(done) break; }
+  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; bubble.classList.remove('pending'); persist(); }
+}
+
+function buildPayload(msgs, lastUserText){
+  const clean = msgs.filter(m=>m.role==='system'||m.role==='user'||m.role==='assistant');
+  // --- 決定 query：優先用最新的輸入；若空但有片段，就用片段標題當提示，否則給預設字串 ---
+  const snippetTitles = [...selected.values()].map(it=> (it.meta?.title||it.meta?.file_path||it.id||'片段')).slice(0,3);
+  const queryText = (lastUserText && lastUserText.trim())
+    || (snippetTitles.length? `根據所選片段回答：${snippetTitles.join('、')}` : '請依對話上下文回答');
+
+  // --- RAG：若啟用，把片段當作 system/user 附加上下文（不依賴後端），同時把 id 列給後端（若支援）---
+  const ragBlock = makeRagBlock(lastUserText);
+  const payloadBase = {
+    query: queryText,
+    messages: clean,
+    language: params.lang,           // 後端期望的鍵名是 language（不是 lang）
+    mode: params.mode,
+    engine: params.engine==='auto'? undefined : params.engine,
+    target_length: params.targetLength || undefined,
+    k: params.k,
+    namespace: params.namespace || undefined,
+    canonicality: params.canonicality || undefined,
+    rerank: params.rerank,
+    thread_id: params.threadId || undefined,
+    selected_ids: selected.size? [...selected.keys()] : undefined
+  };
+
+  if(ragEnabled && ragBlock){
+    if(injectWhere==='system'){
+      payloadBase.messages = [{role:'system', content: ragBlock.prompt}, ...clean];
+    }else{
+      let idx = -1; for(let i=payloadBase.messages.length-1;i>=0;i--){ if(payloadBase.messages[i].role==='user'){ idx=i; break; } }
+      if(idx===-1){ payloadBase.messages.splice(payloadBase.messages.length-1, 0, {role:'user', content: '[僅用片段回答]'+(lastUserText||'請根據所選片段整理重點。')}); idx = payloadBase.messages.findIndex(m=>m.role==='user'); }
+      payloadBase.messages[idx].content += ``+ragBlock.userAppend;
+    }
+  }
+  return payloadBase;
+}
+
+function makeRagBlock(lastUserText){ if(!ragEnabled || selected.size===0) return null; const items = [...selected.values()].slice(0,8); const head = (lastUserText?`使用者問題：${lastUserText}\n\n`:''); const citeLines = items.map((it,idx)=>`[${idx+1}] ${it.meta?.title||it.meta?.file_path||it.id||'片段'}\n${(it.text||'').slice(0,2000)}`); const prompt = head + `你可以參考下列資料片段進行回答；若與使用者問題無關或資料不足，請如實說明。引用時可標示編號。\n\n`+citeLines.join('\n\n'); const userAppend = `\n（隨附參考片段）\n`+citeLines.join('\n\n'); return { prompt, userAppend, items }; }
+
+function insertSelectedToInput(){ if(selected.size===0){ flashHint('尚未選擇片段'); return; } const items = [...selected.values()].slice(0,8); const citeLines = items.map((it,idx)=>`[${idx+1}] ${it.meta?.title||it.meta?.file_path||it.id||'片段'}\n${(it.text||'').slice(0,500)}`); inputEl.value += (inputEl.value?'\n\n':'') + '（參考片段）\n' + citeLines.join('\n\n'); inputEl.focus(); }
+function answerBySnippetsOnly(){ if(selected.size===0){ flashHint('尚未選擇片段'); return; } send(); }
+function flashHint(text){ ragHint.textContent = '（'+text+'）'; setTimeout(()=>{ragHint.textContent='';}, 1800); }
+
+function exportData(){ const blob = new Blob([JSON.stringify({sessions, selected:[...selected.values()]}, null, 2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'ragchat_export.json'; a.click(); URL.revokeObjectURL(url); }
+// --- 覆寫 doSearch：Chroma 無結果時 fallback 到 DB FTS (/kb/search) ---
+async function doSearch(){
+  const query = q.value.trim();
+  if(!query){ hitsEl.innerHTML=''; resultInfo.textContent=''; return; }
+  hitsEl.innerHTML = '<div class="muted">搜尋中…</div>';
+  try{
+    const body = { query, k: params.k, namespace: params.namespace || undefined, canonicality: params.canonicality || undefined, rerank: params.rerank, highlight: true };
+    let res = await fetch(getApiBase()+ '/search', { method:'POST', headers: { 'Content-Type':'application/json', ...buildHeaders() }, body: JSON.stringify(body) });
+    if(!res.ok){ res = await fetch(getApiBase()+ '/search?q='+encodeURIComponent(query), { headers: buildHeaders() }); }
+    let items = [];
+    if(res.ok){ const data = await res.json(); items = normalizeSearch(data); }
+    if(items.length === 0){
+      try{
+        const r2 = await fetch(getApiBase() + '/kb/search', { method:'POST', headers:{'Content-Type':'application/json', ...buildHeaders()}, body: JSON.stringify({ query, k: params.k }) });
+        if(r2.ok){ const d2 = await r2.json(); items = (d2.hits || []).map(h => ({ id: h.id, text: h.text, meta: { title: h.title, ...(h.metadata||{}) }, score: h.score })); }
+      }catch(e){}
+    }
+    renderHits(items); resultInfo.textContent = `共 ${items.length} 筆`; ragHint.textContent = items.length? '' : '（無結果）';
+  }catch(err){ hitsEl.innerHTML = `<div class=\"muted\">搜尋失敗：${(err&&err.message)||err}</div>`; ragHint.textContent = '（/search 不可用）'; }
+}
+// ====== Assistant 動作：複製 / 存成 JSON 到 /docs ======
+function bindAssistantActions(bubble, getText){
+  const copyBtn = bubble.querySelector('.copyBtn');
+  const saveBtn = bubble.querySelector('.saveBtn');
+  const hint = bubble.querySelector('.savedHint');
+  if(copyBtn && !copyBtn._bound){ copyBtn._bound = true; copyBtn.onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(getText()||''); hint.textContent = '已複製'; }
+    catch{ hint.textContent = '複製失敗'; }
+    setTimeout(()=>{ hint.textContent=''; }, 1600);
+  }; }
+  if(saveBtn && !saveBtn._bound){ saveBtn._bound=true; saveBtn.onclick = ()=> saveAssistantToDocs(getText()||'', hint); }
+}
+
+async function saveAssistantToDocs(text, hintEl){
+  if(!text || !text.trim()){ if(hintEl){ hintEl.textContent = '沒有可儲存的內容'; setTimeout(()=>{hintEl.textContent='';}, 1600);} return; }
+  const now = new Date();
+  const iso = now.toISOString();
+  const titleLine = text.split('').find(Boolean) || 'assistant-output';
+  const title = titleLine.slice(0, 60);
+  const payload = {
+    title,
+    content: text,
+    metadata: {
+      thread_id: params.threadId || currentId,
+      created_at: iso,
+      mode: params.mode,
+      lang: params.lang,
+      source: 'assistant'
+    }
+  };
+  try{
+    const res = await fetch(getApiBase()+ '/docs/save', {
+      method:'POST', headers:{ 'Content-Type':'application/json', ...buildHeaders() },
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json().catch(()=>({}));
+    if(hintEl) hintEl.textContent = '已儲存：' + (data.file || data.path || '完成');
+  }catch(e){
+    // 伺服器沒有 /docs/save → 下載到本機
+    const fname = `assistant_${slugify(title)}_${iso.replace(/[:.]/g,'-')}.json`;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = fname; a.click(); URL.revokeObjectURL(url);
+    if(hintEl) hintEl.textContent = '伺服器未提供 /docs/save，已下載本機：'+fname;
+  }
+  if(hintEl) setTimeout(()=>{ hintEl.textContent=''; }, 3000);
+}
+function slugify(s){ return (s||'').toLowerCase().replace(/[^a-z0-9一-龥]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'untitled'; }
+
+// 自動為所有 assistant 泡泡掛上按鈕（含歷史與新訊息）
+function attachAssistantActions(node){
+  if(!(node instanceof HTMLElement)) return;
+  if(!node.classList.contains('msg') || !node.classList.contains('assistant')) return;
+  if(node.querySelector('.actions')) return;
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  actions.innerHTML = `<button class="ghost small copyBtn">複製</button> <button class="ghost small saveBtn">存成 JSON 到 /docs</button> <span class="muted savedHint"></span>`;
+  node.appendChild(actions);
+  const contentEl = node.querySelector('.content');
+  bindAssistantActions(node, ()=> (contentEl?.textContent||''));
+}
+
+// 先處理已存在的訊息
+Array.from(document.querySelectorAll('#chat .msg.assistant')).forEach(attachAssistantActions);
+
+// 監聽未來新增的訊息
+const chatObserver = new MutationObserver(list => {
+  for(const rec of list){ for(const n of rec.addedNodes){ attachAssistantActions(n); } }
+});
+chatObserver.observe(document.getElementById('chat'), { childList: true });
+</script>
 </body>
 </html>
