@@ -12,6 +12,7 @@ services:
     volumes:
       - ./docs:/app/docs
       - ./vector_store:/app/vector_store
+      - ./web:/app/web:ro
       - hf-cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
@@ -45,7 +46,6 @@ services:
     #     reservations:
     #       devices:
     #         - capabilities: ["gpu"]
-
 volumes:
-  ollama:
-  hf-cache:
+  hf-cache: {}
+  ollama: {}
