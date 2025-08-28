@@ -25,16 +25,21 @@ services:
     #   - "host.docker.internal:host-gateway"
 
   ollama:
-    image: ollama/ollama:latest
+    build: ./ollama
     container_name: ollama
+    restart: unless-stopped
     ports:
       - "11435:11434"
-    volumes:
-      - ollama:/root/.ollama
+    # 你的主機需已安裝 nvidia-container-toolkit
     gpus: all
     environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=24h
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ollama:/root/.ollama                 # 模型與快取持久化
+      - ./modelfiles:/modelfiles:ro          # 掛入自訂 Modelfile
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:11434/api/tags"]
       interval: 30s

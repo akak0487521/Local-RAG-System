@@ -1,0 +1,6 @@
+FROM llama3:8b
+# 這裡是「推論參數」的預設值（仍可被 API options 覆蓋）
+PARAMETER num_ctx 8192
+PARAMETER num_gpu 999
+PARAMETER num_batch 512
+# 需要時可再加：temperature、repeat_penalty、rope_scale、mirostat 等
