@@ -10,34 +10,30 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 import os, re, json, time, hashlib, logging, sqlite3, uuid, math
 
-from dotenv import load_dotenv
-load_dotenv()
-
-# ---------- Config & Env ----------
-DOCS_DIR = os.getenv("DOCS_DIR", "/app/docs")
-KB_DB_PATH = os.getenv("KB_DB_PATH", "/app/data/kb.sqlite")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "gamefantasy")
-PERSIST_DIR = os.getenv("PERSIST_DIR", "./vector_store")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-API_KEY_ENV = os.getenv("API_KEY", "changeme")
-READONLY_MODE = os.getenv("READONLY_MODE", "false").lower() == "true"
-DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "zh-tw")
-FILTER_META_DEFAULT = os.getenv("FILTER_META_DEFAULT", "true").lower() == "true"  # NEW
-
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:latest")        # e.g., "llama3:8b"
-OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_USE_CHAT = os.getenv("OLLAMA_USE_CHAT", "true").lower() == "true"
-
-MODEL_PRIORITY = [x.strip() for x in os.getenv("MODEL_PRIORITY", "ollama,openai").split(",") if x.strip()]
-MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "6000"))
-_META_TAGS = {"schema", "prompt", "config", "system", "curator", "meta"}  # NEW
+from .config import (
+    API_KEY_ENV,
+    COLLECTION_NAME,
+    DB_PATH,
+    DEFAULT_LANGUAGE,
+    DOCS_DIR,
+    EMBEDDING_MODEL,
+    FILTER_META_DEFAULT,
+    HALF_LIFE_DAYS,
+    KB_DB_PATH,
+    MAX_CONTEXT_CHARS,
+    META_TAGS,
+    MODEL_PRIORITY,
+    OLLAMA_HOST,
+    OLLAMA_MODEL,
+    OLLAMA_USE_CHAT,
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    PERSIST_DIR,
+    READONLY_MODE,
+    RERANK_MODEL,
+)
 
 # ---------- DB (SQLite) ----------
-DB_PATH = os.getenv("CONV_DB_PATH", "/app/data/conversations.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 def _db():
     conn = sqlite3.connect(DB_PATH)
@@ -157,7 +153,6 @@ if OPENAI_API_KEY:
 # ---------- Vector store (Chroma) ----------
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "gamefantasy")
 client = chromadb.PersistentClient(path=PERSIST_DIR)
 embedder = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
 collection = client.get_or_create_collection(name=COLLECTION_NAME, embedding_function=embedder)
@@ -169,9 +164,7 @@ def get_cross_encoder():
     if _CE is None:
         try:
             from sentence_transformers import CrossEncoder
-            import os
-            model_name = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-            _CE = CrossEncoder(model_name)
+            _CE = CrossEncoder(RERANK_MODEL)
         except Exception as e:
             logger.warning(f"CrossEncoder init failed: {e}")
             _CE = None
@@ -243,7 +236,7 @@ def _is_meta_hit(h: Dict[str, Any]) -> bool:  # NEW
     # 明確標記 meta / schema 類
     if canon == "meta" or ns == "meta":
         return True
-    if t in _META_TAGS:
+    if t in META_TAGS:
         return True
     # 題名啟發式（避免誤殺：只判斷典型關鍵字）
     if any(k in title for k in ("curator", "schema", "prompt手冊", "prompt 指南", "系統說明", "資料庫說明")):
@@ -393,7 +386,6 @@ def _index_doc_to_stores(payload: Dict[str, Any]):
         conn.close()
 
 # --- Recency scoring（時間衰減） ---
-HALF_LIFE_DAYS = int(os.getenv("RECENCY_HALF_LIFE_DAYS", "45"))  # NEW
 
 def _hit_updated_ts(h: Dict[str, Any]) -> int:  # NEW
     m = h.get("metadata") or {}
