@@ -42,6 +42,7 @@ from .db import (
 )
 
 from .models import ComposeRequest, SaveDocItem, SearchRequest, StyleSpec
+from .llm import generate
 
 # initialize database
 _init_db()
@@ -81,11 +82,6 @@ def search_kb_fts(query: str, limit: int = 5) -> List[Dict[str,Any]]:
         })
     return hits
 
-
-# ---------- LLM clients ----------
-if OPENAI_API_KEY:
-    from openai import OpenAI
-    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------- Vector store (Chroma) ----------
 import chromadb
@@ -342,19 +338,6 @@ def _preview_messages(engine: str, model: str, messages: list, max_len: int = 12
         return s if len(s) <= max_len else s[:max_len] + f"...[+{len(s)-max_len} chars]"
     return {"engine": engine, "model": model, "messages": [{"role": m.get("role"), "content": trunc(m.get("content"))} for m in messages]}
 
-def backend_available(name: str) -> bool:
-    n = (name or "").lower()
-    return (n == "openai" and bool(OPENAI_API_KEY)) or (n == "ollama" and bool(OLLAMA_MODEL))
-
-def choose_backend(request_engine: Optional[str]) -> str:
-    if request_engine:
-        eng = request_engine.lower()
-        if backend_available(eng): return eng
-        raise HTTPException(status_code=400, detail=f"Requested engine '{request_engine}' not available.")
-    for eng in MODEL_PRIORITY:
-        if backend_available(eng): return eng
-    raise HTTPException(status_code=500, detail="No LLM backend available (set OPENAI_API_KEY or OLLAMA_MODEL).")
-
 # ---------- Language helpers ----------
 def _norm_lang(lang: Optional[str]) -> str:
     l = (lang or "").strip().lower().replace("_", "-")
@@ -415,11 +398,8 @@ _LANG_SUM_CACHE: Dict[str, str] = {}
 def _cache_key(text: str, lang: str, max_chars: int) -> str:
     return hashlib.md5((text + "|" + lang + "|" + str(max_chars)).encode("utf-8")).hexdigest()
 
-def _summarize_to_lang_openai(text: str, lang: str, max_chars: int = 600) -> Optional[str]:
-    if not OPENAI_API_KEY: return None
+def _summarize_to_lang(text: str, lang: str, max_chars: int = 600) -> Optional[str]:
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)
         l = _norm_lang(lang)
         guard = {
             "zh-tw": f"只用繁體中文轉述重點，不新增資訊，不逐字抄原文。約 {max_chars} 字。",
@@ -428,33 +408,9 @@ def _summarize_to_lang_openai(text: str, lang: str, max_chars: int = 600) -> Opt
             "ko":    f"한국어로 핵심을 요약. 새로운 정보 추가 금지, 원문 베껴쓰기 금지. 약 {max_chars}자.",
         }.get(l, f"Summarize in the requested language only. ~{max_chars} chars.")
         prompt = f"{guard}\n<<<CONTEXT>>>\n{text}\n<<<END>>>"
-        resp = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-        return (resp.choices[0].message.content or "").strip()
-    except Exception:
-        return None
-
-def _summarize_to_lang_ollama(text: str, lang: str, max_chars: int = 600) -> Optional[str]:
-    if not OLLAMA_MODEL: return None
-    try:
-        import requests
-        l = _norm_lang(lang)
-        guard = {
-            "zh-tw": f"只用繁體中文轉述重點，不新增資訊，不逐字抄原文。約 {max_chars} 字。",
-            "zh-cn": f"只用简体中文转述要点，不新增信息，不逐字抄原文。约 {max_chars} 字。",
-            "ja":    f"日本語のみで要点を要約してください。約{max_chars}文字以内。",
-            "ko":    f"한국어로만 핵심을 요약하세요. 약 {max_chars}자.",
-        }.get(l, f"Summarize in the requested language only. ~{max_chars} chars.")
-        prompt = f"{guard}\n<<<CONTEXT>>>\n{text}\n<<<END>>>"
-        payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False, "options": {"temperature": 0.2}}
-        r = requests.post(f"{OLLAMA_HOST}/api/generate", json=payload, timeout=120)
-        r.raise_for_status()
-        data = r.json()
-        s = (data.get("response") or "").strip()
-        return s or None
+        messages = [{"role": "user", "content": prompt}]
+        resp, _ = generate(messages, temperature=0.2)
+        return (resp or "").strip()
     except Exception:
         return None
 
@@ -462,7 +418,7 @@ def _summarize_chunk_to_lang(text: str, lang: Optional[str], max_chars_per_chunk
     l = _norm_lang(lang)
     key = _cache_key(text, l, max_chars_per_chunk)
     if key in _LANG_SUM_CACHE: return _LANG_SUM_CACHE[key]
-    out = _summarize_to_lang_openai(text, l, max_chars=max_chars_per_chunk) or _summarize_to_lang_ollama(text, l, max_chars=max_chars_per_chunk)
+    out = _summarize_to_lang(text, l, max_chars=max_chars_per_chunk)
     result = out if (out and isinstance(out, str)) else text
     _LANG_SUM_CACHE[key] = result
     return result
@@ -574,26 +530,6 @@ def _hits_signature(hits: List[Dict[str, Any]]) -> str:
     basis = [{"id":h.get("id"), "score":round(float(h.get("score", 0.0)), 6)} for h in hits[:6]]
     return hashlib.md5(json.dumps(basis, sort_keys=True).encode()).hexdigest()
 
-# ---------- SSE 整理 ----------
-def _sse_normalize(chunk: str) -> List[str]:
-    if not chunk: return []
-    s = chunk.replace("\r\n", "\n")
-    if not s.lstrip().startswith("data:"):
-        return [f"data: {json.dumps({'token': s})}\n\n"]
-    out: List[str] = []; i = 0
-    while True:
-        start = s.find("data:", i)
-        if start == -1: break
-        end = s.find("\n\n", start)
-        if end != -1:
-            out.append(s[start:end + 2]); i = end + 2; continue
-        next_start = s.find("data:", start + 5)
-        if next_start != -1:
-            out.append(s[start:next_start].rstrip("\n") + "\n\n"); i = next_start
-        else:
-            out.append(s[start:].rstrip("\n") + "\n\n"); break
-    return out
-
 # ---------- System prompts ----------
 STRICT_SYS = (
     "You are the Data Curator for 'Game Fantasy Edition'. "
@@ -607,189 +543,29 @@ CREATIVE_SYS = (
     "Avoid hallucinations; prefer concise paragraphs or bullet points."
 )
 
-# ---------- LLM backends ----------
-def _compose_with_openai(query: str, context: str, mode: str, language: Optional[str],
-                          target_length: Optional[str] = None, max_tokens: Optional[int] = None, style=None) -> str:
-    if not OPENAI_API_KEY: raise RuntimeError("OPENAI_API_KEY 未設定")
-    sys_base = STRICT_SYS if (mode or "").lower() == "strict" else CREATIVE_SYS
-    user_guard, system_guard = _language_policy(language)
-    user_content = _build_user_content(query, context, language, target_length, user_guard)
-    tone_ctrl = _style_to_controller(style.dict() if hasattr(style, "dict") else (style or {}))
-    temperature = _style_temperature(style.dict() if hasattr(style, "dict") else (style or {}), base=0.4)
-
-    for i in range(3):
-        try:
-            resp = openai_client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": sys_base},
-                    {"role": "system", "content": system_guard},
-                    ([{"role":"system","content":tone_ctrl}] if tone_ctrl else []),
-                    {"role": "user", "content": user_content},
-                ],
-                temperature=temperature,
-                **({"max_tokens": max_tokens} if isinstance(max_tokens, int) and max_tokens>0 else {}),
-            )
-            return resp.choices[0].message.content
-        except Exception:
-            if i == 2: raise
-            time.sleep(1.5 * (i + 1))
-    raise RuntimeError("OpenAI call failed after retries.")
-
-def _compose_with_ollama(query: str, context: str, mode: str, language: Optional[str],
-                         target_length: Optional[str] = None, num_predict: Optional[int] = None, style=None) -> str:
-    import requests
-    if not OLLAMA_MODEL: raise RuntimeError("OLLAMA_MODEL 未設定")
-    sys_base = STRICT_SYS if (mode or "").lower() == "strict" else CREATIVE_SYS
-    user_guard, system_guard = _language_policy(language)
-    user_content = _build_user_content(query, context, language, target_length, user_guard)
-    tone_ctrl = _style_to_controller(style.dict() if hasattr(style, "dict") else (style or {}))
-    temperature = _style_temperature(style.dict() if hasattr(style, "dict") else (style or {}), base=0.4)
-
-    if OLLAMA_USE_CHAT:
-        payload = {"model": OLLAMA_MODEL, "stream": False,
-                   "messages": [{"role":"system","content":sys_base},
-                                {"role":"system","content":system_guard},
-                                ([{"role":"system","content":tone_ctrl}] if tone_ctrl else []),
-                                {"role":"user","content":user_content}],
-                    "options": {"temperature": temperature, **({"num_predict": num_predict} if isinstance(num_predict,int) and num_predict>0 else {})}
-                    }
-        if isinstance(num_predict, int) and num_predict>0:
-            payload["options"] = {"num_predict": num_predict}
-        r = requests.post(f"{OLLAMA_HOST}/api/chat", json=payload, timeout=180)
-        r.raise_for_status(); data = r.json()
-        return data.get("message", {}).get("content") or data.get("response", "")
-    else:
-        prompt = f"{sys_base}\n\n{system_guard}\n{user_guard}\n{_wrap_context(context)}"
-        payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
-        if isinstance(num_predict, int) and num_predict>0:
-            payload["options"] = {"num_predict": num_predict}
-        r = requests.post(f"{OLLAMA_HOST}/api/generate", json=payload, timeout=180)
-        r.raise_for_status(); data = r.json()
-        return data.get("response", "")
-
-# 注意：簽名多了 style: Optional[StyleSpec] = None
-def _stream_with_openai(
+def _prepare_messages(
     query: str,
     context: str,
     mode: str,
     language: Optional[str],
     target_length: Optional[str] = None,
-    max_tokens: Optional[int] = None,
-    debug_prompts: bool = False,
-    style: Optional[StyleSpec] = None
-):
-    yield f"data: {json.dumps({'token': ''})}\n\n"
-    if not OPENAI_API_KEY:
-        yield f"data: {json.dumps({'token': '[OpenAI 未設定 OPENAI_API_KEY]'})}\n\n"; return
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
-        sys_base = STRICT_SYS if (mode or "").lower() == "strict" else CREATIVE_SYS
-        user_guard, system_guard = _language_policy(language)
-        user_content = _build_user_content(query, context, language, target_length, user_guard)
-
-        # 語氣控制器與溫度
-        style_dict = style.dict() if hasattr(style, "dict") else (style or {})
-        tone_ctrl = _style_to_controller(style_dict)
-        temperature = _style_temperature(style_dict, base=0.4)
-
-        # 正確展開 messages（避免把 list 當成單一元素）
-        messages = [
-            {"role": "system", "content": sys_base},
-            {"role": "system", "content": system_guard},
-        ]
-        if tone_ctrl:
-            messages.append({"role": "system", "content": tone_ctrl})
-        messages.append({"role": "user", "content": user_content})
-
-        if debug_prompts:
-            preview = _preview_messages("openai", OPENAI_MODEL, messages)
-            yield "data: " + json.dumps({"debug": preview}, ensure_ascii=False) + "\n\n"
-
-        stream = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            temperature=temperature,  # ← 使用語氣控制器推導出的溫度
-            stream=True,
-            **({"max_tokens": max_tokens} if isinstance(max_tokens, int) and max_tokens > 0 else {}),
-        )
-
-        for chunk in stream:
-            delta = ""
-            try:
-                # 新舊 SDK 皆相容的取法
-                delta = getattr(chunk.choices[0].delta, "content", None) or chunk.choices[0].delta.get("content", "")
-            except Exception:
-                pass
-            if delta:
-                yield f"data: {json.dumps({'token': delta})}\n\n"
-
-    except Exception as e:
-        yield f"data: {json.dumps({'token': f'[OpenAI stream error] {e}'})}\n\n"
-
-def _stream_with_ollama(
-    query: str,
-    context: str,
-    mode: str,
-    language: Optional[str],
-    target_length: Optional[str] = None,
-    num_predict: Optional[int] = None,
-    debug_prompts: bool = False,
-    style: Optional[StyleSpec] = None
-):
-    yield f"data: {json.dumps({'token': ''})}\n\n"
-    import requests
-    if not OLLAMA_MODEL:
-        yield f"data: {json.dumps({'token': '[Ollama 未設定 OLLAMA_MODEL]'})}\n\n"; return
-
+    style: Optional[StyleSpec] = None,
+) -> Tuple[List[Dict[str, str]], float]:
+    """Build chat messages and temperature from inputs."""
     sys_base = STRICT_SYS if (mode or "").lower() == "strict" else CREATIVE_SYS
     user_guard, system_guard = _language_policy(language)
     user_content = _build_user_content(query, context, language, target_length, user_guard)
-
-    # 語氣控制器與溫度
     style_dict = style.dict() if hasattr(style, "dict") else (style or {})
     tone_ctrl = _style_to_controller(style_dict)
     temperature = _style_temperature(style_dict, base=0.4)
-
-    messages = [
+    messages: List[Dict[str, str]] = [
         {"role": "system", "content": sys_base},
         {"role": "system", "content": system_guard},
     ]
     if tone_ctrl:
         messages.append({"role": "system", "content": tone_ctrl})
     messages.append({"role": "user", "content": user_content})
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "stream": True,
-        "messages": messages,
-        "options": {"temperature": temperature}
-    }
-    if isinstance(num_predict, int) and num_predict > 0:
-        payload["options"]["num_predict"] = num_predict
-
-    if debug_prompts:
-        preview = _preview_messages("ollama", OLLAMA_MODEL, messages)
-        yield "data: " + json.dumps({"debug": preview}, ensure_ascii=False) + "\n\n"
-
-    try:
-        with requests.post(f"{OLLAMA_HOST}/api/chat", json=payload, stream=True, timeout=300) as r:
-            r.raise_for_status()
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line.decode("utf-8"))
-                except Exception:
-                    continue
-                # 兼容不同版本的欄位
-                msg = (data.get("message") or {}).get("content") or data.get("response")
-                if msg:
-                    yield f"data: {json.dumps({'token': msg})}\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'token': f'[Ollama stream error] {e}'})}\n\n"
+    return messages, temperature
 
 # ---------- Endpoints ----------
 @app.get("/")
@@ -955,16 +731,24 @@ def compose(req: ComposeRequest, api_key: Optional[str] = Security(api_key_heade
     rag_context, used_hits = _build_context_lang(hits, language=lang, max_chars=MAX_CONTEXT_CHARS, max_chars_per_chunk=600)
     combined_ctx = (f"<<<HISTORY_START>>>\n{history_block}\n<<<HISTORY_END>>>\n\n" if history_block else "") + rag_context
 
-    engine = choose_backend(req.engine)
-    sig = _hits_signature(hits)
-    cache_key = (req.query, req.mode, lang, engine, sig, MAX_CONTEXT_CHARS, req.target_length)
-    # 直接生成
-    if engine == "openai":
-        draft = _compose_with_openai(req.query, combined_ctx, req.mode, lang, target_length=req.target_length, max_tokens=req.max_tokens)
-    elif engine == "ollama":
-        draft = _compose_with_ollama(req.query, combined_ctx, req.mode, lang, target_length=req.target_length, num_predict=req.num_predict)
-    else:
-        raise HTTPException(500, f"未知的 engine: {engine}")
+    messages, temperature = _prepare_messages(
+        req.query,
+        combined_ctx,
+        req.mode,
+        lang,
+        target_length=req.target_length,
+        style=req.style,
+    )
+    try:
+        draft, engine = generate(
+            messages,
+            engine=req.engine,
+            temperature=temperature,
+            max_tokens=req.max_tokens,
+            num_predict=req.num_predict,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"LLM generate failed: {e}")
 
     save_message(thread_id, "assistant", draft, lang)
     prev = get_summary(thread_id)
@@ -1011,52 +795,35 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
     def event_stream():
         assistant_accum: List[str] = []
         try:
-            final_engine = None
-            # 先走 Ollama（若指定或預設存在）
-            if req.engine == "ollama" or (not req.engine and OLLAMA_MODEL):
-                final_engine = "ollama"
-                for chunk in _stream_with_ollama(
-                    req.query, combined_ctx, req.mode, lang,
-                    target_length=req.target_length,
-                    num_predict=req.num_predict,
-                    debug_prompts=debug_prompts,
-                    style=req.style  # NEW: 傳入 style
-                ):
-                    # 收集 token
-                    try:
-                        if chunk.startswith("data:"):
-                            obj = json.loads(chunk.split("data:", 1)[1])
-                            if isinstance(obj, dict) and "token" in obj:
-                                assistant_accum.append(obj["token"])
-                    except Exception:
-                        pass
-                    for ev in _sse_normalize(chunk):
-                        yield ev
+            messages, temperature = _prepare_messages(
+                req.query,
+                combined_ctx,
+                req.mode,
+                lang,
+                target_length=req.target_length,
+                style=req.style,
+            )
+            yield f"data: {json.dumps({'token': ''})}\n\n"
+            stream, final_engine = generate(
+                messages,
+                engine=req.engine,
+                stream=True,
+                temperature=temperature,
+                max_tokens=req.max_tokens,
+                num_predict=req.num_predict,
+            )
+            if debug_prompts:
+                model = OPENAI_MODEL if final_engine == 'openai' else OLLAMA_MODEL
+                preview = _preview_messages(final_engine, model, messages)
+                yield "data: " + json.dumps({"debug": preview}, ensure_ascii=False) + "\n\n"
+            for token in stream:
+                assistant_accum.append(token)
+                yield f"data: {json.dumps({'token': token})}\n\n"
+        except Exception as e:
+            yield f'data: {json.dumps({"token": f"[compose_stream error] {e}"})}\n\n'
+            return
 
-            # 否則走 OpenAI（若指定或有 key）
-            elif req.engine == "openai" or (not req.engine and OPENAI_API_KEY):
-                final_engine = "openai"
-                for chunk in _stream_with_openai(
-                    req.query, combined_ctx, req.mode, lang,
-                    target_length=req.target_length,
-                    max_tokens=req.max_tokens,
-                    debug_prompts=debug_prompts,
-                    style=req.style  # NEW: 傳入 style
-                ):
-                    try:
-                        if chunk.startswith("data:"):
-                            obj = json.loads(chunk.split("data:", 1)[1])
-                            if isinstance(obj, dict) and "token" in obj:
-                                assistant_accum.append(obj["token"])
-                    except Exception:
-                        pass
-                    for ev in _sse_normalize(chunk):
-                        yield ev
-            else:
-                final_engine = "none"
-                yield f'data: {json.dumps({"token":"[沒有可用的 LLM 後端]"})}\n\n'
-
-            # 串流完成：寫回答＋更新摘要
+        try:
             assistant_text = "".join(assistant_accum).strip()
             if assistant_text:
                 save_message(thread_id, "assistant", assistant_text, lang)
@@ -1070,12 +837,9 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
                 "citations": hits,
                 "used_hits": used_hits,
                 "engine": final_engine,
-                "thread_id": thread_id
-                # 需要也可回傳 style 設定供前端顯示：
-                # "style": req.style.dict() if hasattr(req.style, "dict") and req.style else req.style
+                "thread_id": thread_id,
             }
             yield f"data: {json.dumps(tail, ensure_ascii=False)}\n\n"
-
         except Exception as e:
             yield f'data: {json.dumps({"token": f"[compose_stream error] {e}"})}\n\n'
 
