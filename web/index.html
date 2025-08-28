@@ -4,114 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RAG Chat — Chat UI + 參數面板</title>
-  <style>
-    :root{ --bg:#0b1020;--panel:#0f1530;--soft:#5462a4;--line:#223055;--text:#e7eaf6;--muted:#9aa6c3;--brand:#4b80ff;--brand-2:#30d0a5;--warn:#ffb454;--danger:#ff7272; 
-      /* 可自行調整的泡泡配色變數 */
-      --user-bubble:#349f23;             /* user 泡泡底色 */
-      --assistant-bubble-start:var(--soft);/* assistant 漸層開始 */
-      --assistant-bubble-end:#0d2a84;      /* assistant 漸層結束 */
-      --user-border:#2a3a66;              /* user 泡泡邊框色 */
-      --assistant-border:#28345f;         /* assistant 泡泡邊框色 */
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    .layout { grid-auto-flow: row; }
-    body { direction: ltr; }          /* 避免 RTL 影響欄序 */
-    .sidebar { grid-column: 1 !important; grid-row: 1 / 4; }
-    .main    { grid-column: 2 !important; grid-row: 1 / 4; min-width: 0; }
-    .right   { grid-column: 3 !important; grid-row: 1 / 4; }
-    
-    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif}
-    .layout{display:grid;grid-template-columns:270px minmax(0,1fr) 420px;grid-template-rows:auto 1fr auto;gap:0;height:100%;transition:grid-template-columns .2s ease;}
-    .layout.right-collapsed{grid-template-columns:270px minmax(0,1fr);}
-    .sidebar{grid-row:1/4;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
-    .side-top{padding:12px;border-bottom:1px solid var(--line);display:flex;gap:8px}
-    .side-top button{flex:1}
-    .side-scroll{flex:1;overflow:auto;padding:8px}
-    .side-item{padding:10px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;margin:8px;cursor:pointer}
-    .side-item .row{display:flex;align-items:center;gap:8px}
-    .side-item .title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .side-actions{display:flex;gap:6px}
-    .icon-btn{background:transparent;border:1px solid var(--line);color:#cfe0ff;border-radius:8px;padding:4px 6px;cursor:pointer}
-    .icon-btn:hover{background:#162149}
-    .icon-btn.danger{border-color:#5a1e2a;color:#ff9aa8}
-
-    .main{display:flex;flex-direction:column}
-    .header{padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-    .pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted)}
-    .chat{flex:1;overflow:auto;padding:18px 20px}
-    .msg{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:12px;border-radius:14px;margin:12px 0;border:1px solid var(--line);background:var(--soft)}
-    /* 依角色分色 */
-    .msg.user{ background: var(--user-bubble); border-color: var(--user-border); }
-    .msg.assistant{ background: linear-gradient(180deg,var(--assistant-bubble-start), var(--assistant-bubble-end)); border-color: var(--assistant-border); }
-    .msg.assistant{ background: linear-gradient(180deg,var(--assistant-bubble-start), var(--assistant-bubble-end)); border-color: var(--assistant-border); }
-    .role{opacity:.8;font-weight:600}
-    .content{white-space:pre-wrap;line-height:1.6}
-    .composer{display:flex;gap:10px;padding:12px;border-top:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
-    textarea{flex:1;min-height:72px;resize:vertical;padding:12px;border-radius:12px;background:#0d1330;color:var(--text);border:1px solid var(--line)}
-    button{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
-    button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
-    :root{
-        --copy-bg:#3b82f6;     /* 背景色 */
-        --copy-fg:#fff;        /* 文字色 */
-        --copy-border:#3b82f6; /* 邊框色 */
-        --copy-hover:#2f6bd6;  /* hover 背景 */
-    }
-    .msg .actions .copyBtn{
-        background: var(--copy-bg);
-        color: var(--copy-fg);
-        border-color: var(--copy-border);
-    }
-    .msg .actions .copyBtn:hover{
-        background: var(--copy-bg);
-    }
-    .msg .actions .saveBtn{
-        background: var(--copy-bg);
-        color: var(--copy-fg);
-        border-color: var(--copy-border);
-    }
-    .msg .actions .saveBtn:hover{
-        background: var(--copy-bg);
-    }
-    button.alt{background:var(--brand-2);color:#052018}
-    button.danger{background:var(--danger)}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    /* === Spinner (等待動畫) === */
-    .loader{ width:18px; height:18px; border-radius:50%; border:3px solid var(--brand); border-top-color: transparent; display:inline-block; animation: spin .8s linear infinite; }
-    @keyframes spin { to { transform: rotate(1turn); } }
-    .msg.assistant.pending .content{ color: var(--muted); }
-    .msg.assistant.pending .content .loader{ margin:2px 2px -2px 2px; }
-
-    .right{grid-row:1/4;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
-    .right.collapsed{display:none !important}
-    .right .head{padding:22.5px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .right .body{flex:1;overflow:auto;padding:12px}
-    .section{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px;background:#0f1834}
-    .section h3{margin:0 0 8px 0;font-size:14px;opacity:.9}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
-    .row label{font-size:12px;opacity:.8}
-    .row input,.row select{background:#0d1330;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px}
-    .row input[type="text"], .row input[type="number"]{min-width:120px}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-
-    .search{display:flex;gap:8px}
-    .search input{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1330;color:var(--text)}
-    .hit{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;background:#0e1632}
-    .hit h4{margin:.2em 0 .4em 0;font-size:14px;color:#d7def7}
-    .meta{color:var(--muted);font-size:12px}
-    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
-    .toggle{display:flex;gap:6px;align-items:center}
-    .counter{margin-left:auto;color:var(--muted);font-size:12px}
-    .footer-note{color:var(--muted);font-size:12px;padding:6px 14px}
-    .badge{background:var(--brand-2);color:#052018;border-radius:999px;font-size:12px;padding:2px 8px;margin-left:6px}
-    .muted{color:var(--muted)}
-
-    /* 把「在小螢幕時隱藏右欄」的斷點下修，避免一般筆電誤判 */
-    @media (max-width: 860px){ .layout{grid-template-columns: 1fr;} .sidebar{display:none} .right{display:none} }
-      /* actions 區塊與小按鈕 */
-    .msg .actions{ grid-column: 2; display:flex; gap:8px; align-items:center; margin-top:6px; }
-    button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
-</style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="layout">
@@ -235,3 +128,4 @@
 <script type="module" src="main.js"></script>
 </body>
 </html>
+
