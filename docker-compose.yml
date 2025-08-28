@@ -1,4 +1,25 @@
 version: "3.9"
+
+x-ollama-common: &ollama_common
+  container_name: ollama
+  restart: unless-stopped
+  ports:
+    - "127.0.0.1:11435:11434"     # 外部用 11435 測試；容器間一律走 http://ollama:11434
+  environment:
+    - OLLAMA_HOST=0.0.0.0
+    - OLLAMA_KEEP_ALIVE=24h
+  volumes:
+    - ollama:/root/.ollama        # 模型與快取持久化
+    - ./modelfiles:/modelfiles:ro # 你的自訂 Modelfile（可選）
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:11434/api/tags"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+  networks:
+    default:
+      aliases: ["ollama"]         # 讓其他服務用 http://ollama:11434 連這台
+
 services:
   ragapi:
     build: .
@@ -7,8 +28,6 @@ services:
       - "8000:8000"
     env_file:
       - .env
-    depends_on:
-      - ollama
     volumes:
       - ./docs:/app/docs
       - ./vector_store:/app/vector_store
@@ -24,27 +43,25 @@ services:
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
 
-  ollama:
-    build: ./ollama
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11435:11434"
-    # 你的主機需已安裝 nvidia-container-toolkit
+  ollama-nvidia:
+    <<: *ollama_common
+    profiles: ["nvidia"]
+    image: ollama/ollama:latest
     gpus: all
     environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_KEEP_ALIVE=24h
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    volumes:
-      - ollama:/root/.ollama                 # 模型與快取持久化
-      - ./modelfiles:/modelfiles:ro          # 掛入自訂 Modelfile
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:11434/api/tags"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
+  
+  ollama-amd:
+    <<: *ollama_common
+    profiles: ["amd"]
+    image: ollama/ollama:rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+
     # For NVIDIA GPUs, uncomment (requires nvidia-container-toolkit on host)
     # deploy:
     #   resources:
