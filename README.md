@@ -33,7 +33,7 @@ Local-RAG-System/
 
 2. Configure environment
 
-Copy .env.example or create your own .env file. Key variables include:
+   Copy .env.example or create your own .env file. Key variables include:
 
 OPENAI_API_KEY
 
