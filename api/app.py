@@ -4,7 +4,6 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, RedirectResponse
-from pydantic import BaseModel
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
@@ -41,6 +40,8 @@ from .db import (
     get_summary,
     set_summary,
 )
+
+from .models import ComposeRequest, SaveDocItem, SearchRequest, StyleSpec
 
 # initialize database
 _init_db()
@@ -117,48 +118,11 @@ if os.path.isdir("web"):
     app.mount("/app", StaticFiles(directory="web", html=True), name="web")
 
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
+
 def _auth(api_key: Optional[str]):
     if API_KEY_ENV and API_KEY_ENV != "changeme":
         if not api_key or api_key != API_KEY_ENV:
             raise HTTPException(status_code=401, detail="Invalid API key")
-
-# ---------- Request models ----------
-class SearchRequest(BaseModel):
-    query: str
-    k: int = 5
-    namespace: Optional[str] = None
-    canonicality: Optional[str] = None
-    rerank: bool = False
-    highlight: bool = False
-
-class StyleSpec(BaseModel):
-    tone: Optional[str] = None
-    directness: Optional[float] = None
-    empathy: Optional[float] = None
-    hedging: Optional[float] = None
-    formality: Optional[float] = None
-
-class ComposeRequest(BaseModel):
-    query: str
-    mode: str = "strict"  # "strict" | "creative"
-    k: int = 6
-    namespace: Optional[str] = None
-    canonicality: Optional[str] = None
-    rerank: bool = True
-    engine: Optional[str] = None  # "openai" | "ollama"
-    language: Optional[str] = DEFAULT_LANGUAGE
-    selected_ids: Optional[List[str]] = None
-    debug: Optional[bool] = False
-    target_length: Optional[str] = None
-    max_tokens: Optional[int] = None
-    num_predict: Optional[int] = None
-    thread_id: Optional[str] = None  # ← 對話 ID（前端可用 localStorage 保存）
-    style: Optional[StyleSpec] = None   
-
-class SaveDocItem(BaseModel):
-    title: str
-    content: str
-    metadata: dict = {}
 
 # ---------- Helpers ----------
 logger = logging.getLogger(__name__)
