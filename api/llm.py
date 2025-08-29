@@ -74,6 +74,7 @@ class OllamaBackend:
     def __init__(self) -> None:
         if not OLLAMA_MODEL:
             raise RuntimeError("OLLAMA_MODEL not set")
+        self.use_chat = OLLAMA_USE_CHAT
 
     def generate(
         self,
@@ -87,7 +88,7 @@ class OllamaBackend:
         options: Dict[str, Any] = {"temperature": temperature}
         if isinstance(num_predict, int) and num_predict > 0:
             options["num_predict"] = num_predict
-        if OLLAMA_USE_CHAT:
+        if self.use_chat:
             payload: Dict[str, Any] = {
                 "model": OLLAMA_MODEL,
                 "messages": messages,
@@ -95,45 +96,53 @@ class OllamaBackend:
                 "options": options,
             }
             url = f"{OLLAMA_HOST}/api/chat"
-            if stream:
-                with requests.post(url, json=payload, stream=True, timeout=300) as r:
+            try:
+                if stream:
+                    with requests.post(url, json=payload, stream=True, timeout=300) as r:
+                        r.raise_for_status()
+                        for line in r.iter_lines():
+                            if not line:
+                                continue
+                            data = json.loads(line.decode("utf-8"))
+                            msg = (data.get("message") or {}).get("content") or data.get("response")
+                            if msg:
+                                yield msg
+                        return
+                else:
+                    r = requests.post(url, json=payload, timeout=300)
                     r.raise_for_status()
-                    for line in r.iter_lines():
-                        if not line:
-                            continue
-                        data = json.loads(line.decode("utf-8"))
-                        msg = (data.get("message") or {}).get("content") or data.get("response")
-                        if msg:
-                            yield msg
-            else:
-                r = requests.post(url, json=payload, timeout=300)
+                    data = r.json()
+                    return (data.get("message") or {}).get("content") or data.get("response", "")
+            except requests.HTTPError as e:
+                if getattr(e.response, "status_code", None) == 404:
+                    logger.info("/api/chat not found, falling back to /api/generate")
+                    self.use_chat = False
+                else:
+                    raise
+
+        prompt = "\n".join(m.get("content", "") for m in messages)
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": stream,
+            "options": options,
+        }
+        url = f"{OLLAMA_HOST}/api/generate"
+        if stream:
+            with requests.post(url, json=payload, stream=True, timeout=300) as r:
                 r.raise_for_status()
-                data = r.json()
-                return (data.get("message") or {}).get("content") or data.get("response", "")
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line.decode("utf-8"))
+                    msg = data.get("response")
+                    if msg:
+                        yield msg
         else:
-            prompt = "\n".join(m.get("content", "") for m in messages)
-            payload = {
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": stream,
-                "options": options,
-            }
-            url = f"{OLLAMA_HOST}/api/generate"
-            if stream:
-                with requests.post(url, json=payload, stream=True, timeout=300) as r:
-                    r.raise_for_status()
-                    for line in r.iter_lines():
-                        if not line:
-                            continue
-                        data = json.loads(line.decode("utf-8"))
-                        msg = data.get("response")
-                        if msg:
-                            yield msg
-            else:
-                r = requests.post(url, json=payload, timeout=300)
-                r.raise_for_status()
-                data = r.json()
-                return data.get("response", "")
+            r = requests.post(url, json=payload, timeout=300)
+            r.raise_for_status()
+            data = r.json()
+            return data.get("response", "")
 
 
 BACKENDS = {
