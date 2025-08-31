@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Security, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
-import json, time, os
+import json, time, os, logging
 
 from ..models import ComposeRequest
 from ..config import MAX_CONTEXT_CHARS, OPENAI_MODEL, OLLAMA_MODEL
@@ -23,6 +23,7 @@ from ..app import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/threads")
@@ -58,6 +59,7 @@ def get_thread_messages(thread_id: str, limit: int = 500, api_key: Optional[str]
 @router.post("/compose")
 def compose(req: ComposeRequest, api_key: Optional[str] = Security(api_key_header)):
     _auth(api_key)
+    logger.debug("compose language: %s", req.language)
     hits = _search_internal(req.query, req.k, req.namespace, req.canonicality, req.rerank)
     if not hits:
         return {"draft": "", "citations": [], "note": "無檢索命中；請調整 query 或新增資料。"}
@@ -105,6 +107,7 @@ def compose(req: ComposeRequest, api_key: Optional[str] = Security(api_key_heade
 @router.post("/compose_stream")
 def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_key_header)):
     _auth(api_key)
+    logger.debug("compose_stream language: %s", req.language)
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
