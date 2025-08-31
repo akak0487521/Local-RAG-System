@@ -384,23 +384,49 @@ def _language_policy(lang: Optional[str]) -> tuple[str, str]:
 def _wrap_context(context: str) -> str:
     return f"<<<HISTORY+RAG CONTEXT>>>\n{context}\n<<<END>>>"
 
+_USER_CONTENT_TEMPLATES = {
+    "zh-tw": {
+        "guide": "字數約 {target_length}。",
+        "body": "請根據上述內容完成「{query}」。{guide}\n輸出可用段落或條列，務必遵守語言規則。",
+    },
+    "zh-cn": {
+        "guide": "字数约 {target_length}。",
+        "body": "请根据上述内容完成“{query}”。{guide}\n输出可以使用段落或项目符号。",
+    },
+    "ja": {
+        "guide": "目安の長さ: {target_length}。",
+        "body": "上記の内容に基づいて「{query}」を完成してください。{guide}\n段落または箇条書き可。",
+    },
+    "ko": {
+        "guide": " 분량: 약 {target_length}.",
+        "body": "위 내용을 바탕으로 ‘{query}’를 완성하세요.{guide}\n단락 또는 불릿 허용.",
+    },
+    "fr": {
+        "guide": " Longueur cible : {target_length}.",
+        "body": "Complétez « {query} » en vous basant sur le contexte ci-dessus.{guide}\nUtilisez des paragraphes et/ou des puces.",
+    },
+    "es": {
+        "guide": " Longitud objetivo: {target_length}.",
+        "body": "Complete “{query}” basándose en el contexto anterior.{guide}\nUse párrafos y/o viñetas.",
+    },
+    "de": {
+        "guide": " Zielumfang: {target_length}.",
+        "body": "Vervollständige „{query}“ basierend auf dem obigen Kontext.{guide}\nVerwende Absätze und/oder Aufzählungspunkte.",
+    },
+    "en": {
+        "guide": " Target length: {target_length}.",
+        "body": "Complete “{query}” based on the context above.{guide}\nUse paragraphs and/or bullet points.",
+    },
+}
+
 def _build_user_content(query: str, context: str, lang: Optional[str],
                         target_length: Optional[str], user_guard: str) -> str:
-    l = _norm_lang(lang); ctx = _wrap_context(context)
-    if l == "zh-tw":
-        guide = f"字數約 {target_length}。" if target_length else ""
-        return f"{user_guard}\n{ctx}\n請根據上述內容完成「{query}」。{guide}\n輸出可用段落或條列，務必遵守語言規則。"
-    if l == "zh-cn":
-        guide = f"字数约 {target_length}。" if target_length else ""
-        return f"{user_guard}\n{ctx}\n请根据上述内容完成“{query}”。{guide}\n输出可以使用段落或项目符号。"
-    if l == "ja":
-        guide = f"目安の長さ: {target_length}。" if target_length else ""
-        return f"{user_guard}\n{ctx}\n上記の内容に基づいて「{query}」を完成してください。{guide}\n段落または箇条書き可。"
-    if l == "ko":
-        guide = f"분량: 약 {target_length}." if target_length else ""
-        return f"{user_guard}\n{ctx}\n위 내용을 바탕으로 ‘{query}’를 완성하세요. {guide}\n단락 또는 불릿 허용."
-    guide = f"Target length: {target_length}." if target_length else ""
-    return f"{user_guard}\n{ctx}\nComplete “{query}” based on the context above. {guide}\nUse paragraphs and/or bullet points."
+    l = _norm_lang(lang)
+    ctx = _wrap_context(context)
+    tpl = _USER_CONTENT_TEMPLATES.get(l, _USER_CONTENT_TEMPLATES["en"])
+    guide = tpl["guide"].format(target_length=target_length) if target_length else ""
+    body = tpl["body"].format(query=query, guide=guide)
+    return f"{user_guard}\n{ctx}\n{body}"
 
 # --- 片段轉寫快取 ---
 _LANG_SUM_CACHE: Dict[str, str] = {}
