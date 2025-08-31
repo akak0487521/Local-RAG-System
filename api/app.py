@@ -349,7 +349,10 @@ def _norm_lang(lang: Optional[str]) -> str:
         "en": "en", "en-us": "en", "en-gb": "en",
         "fr": "fr", "de": "de", "es": "es",
     }
-    return mapping.get(l, (os.environ.get("DEFAULT_LANGUAGE") or "zh-tw").lower())
+    default = (os.environ.get("DEFAULT_LANGUAGE") or "zh-tw").lower()
+    if not l:
+        return default
+    return mapping.get(l, l)
 
 def _language_policy(lang: Optional[str]) -> tuple[str, str]:
     l = _norm_lang(lang)
