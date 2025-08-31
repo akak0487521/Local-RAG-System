@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-ollama-common: &ollama_common
   container_name: ollama
   restart: unless-stopped
@@ -9,7 +7,7 @@ x-ollama-common: &ollama_common
     - OLLAMA_HOST=0.0.0.0
     - OLLAMA_KEEP_ALIVE=24h
   volumes:
-    - ollama:/root/.ollama        # 模型與快取持久化
+    - ~/.ollama:/root/.ollama        # 模型與快取持久化
     - ./modelfiles:/modelfiles:ro # 你的自訂 Modelfile（可選）
   healthcheck:
     test: ["CMD", "curl", "-fsS", "http://127.0.0.1:11434/api/tags"]

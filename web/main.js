@@ -156,16 +156,6 @@ function getApiBase(){ return params.apiBase || window.location.origin; }
 function buildHeaders(extra={}){ const h = { ...extra }; if(params.apiKey) h['x-api-key'] = params.apiKey; return h; }
 
 // ====== 搜尋（容錯多格式） ======
-async function doSearch(){ const query = q.value.trim(); if(!query){ hitsEl.innerHTML=''; resultInfo.textContent=''; return; } hitsEl.innerHTML = '<div class="muted">搜尋中…</div>'; try{ const body = { query, k: params.k, namespace: params.namespace || undefined, canonicality: params.canonicality || undefined, rerank: params.rerank, highlight: true };
-    // 優先 POST /search
-    let res = await fetch(getApiBase()+ '/search', { method:'POST', headers: { 'Content-Type':'application/json', ...buildHeaders() }, body: JSON.stringify(body) });
-    if(!res.ok){ // 後援 GET /search?q=
-      res = await fetch(getApiBase()+ '/search?q='+encodeURIComponent(query), { headers: buildHeaders() });
-    }
-    if(!res.ok) throw new Error('Search '+res.status);
-    const data = await res.json(); const items = normalizeSearch(data); renderHits(items); resultInfo.textContent = `共 ${items.length} 筆`; ragHint.textContent = items.length? '' : '（無結果）';
-  }catch(err){ hitsEl.innerHTML = `<div class=\"muted\">搜尋失敗：${(err&&err.message)||err}</div>`; ragHint.textContent = '（/search 不可用）'; } }
-
 function normalizeSearch(data){
   const out = [];
   try{
