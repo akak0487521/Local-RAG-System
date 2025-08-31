@@ -60,11 +60,11 @@ def get_thread_messages(thread_id: str, limit: int = 500, api_key: Optional[str]
 def compose(req: ComposeRequest, api_key: Optional[str] = Security(api_key_header)):
     _auth(api_key)
     logger.debug("compose language: %s", req.language)
+    lang = _norm_lang(req.language)
     hits = _search_internal(req.query, req.k, req.namespace, req.canonicality, req.rerank)
     if not hits:
-        return {"draft": "", "citations": [], "note": "無檢索命中；請調整 query 或新增資料。"}
+        return {"draft": "", "citations": [], "note": "無檢索命中；請調整 query 或新增資料。", "language": lang}
     thread_id = req.thread_id or f"auto-{int(time.time()*1000)}"
-    lang = _norm_lang(req.language)
     save_message(thread_id, "user", req.query, lang)
 
     history_block = _format_history_block(thread_id, lang, max_turns=6, max_chars=1200)
@@ -180,6 +180,7 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
                 "used_hits": used_hits,
                 "engine": final_engine,
                 "thread_id": thread_id,
+                "language": lang,
             }
             yield f"data: {json.dumps(tail, ensure_ascii=False)}\n\n"
         except Exception as e:

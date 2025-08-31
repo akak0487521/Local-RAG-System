@@ -349,7 +349,10 @@ def _norm_lang(lang: Optional[str]) -> str:
         "en": "en", "en-us": "en", "en-gb": "en",
         "fr": "fr", "de": "de", "es": "es",
     }
-    return mapping.get(l, (os.environ.get("DEFAULT_LANGUAGE") or "zh-tw").lower())
+    default = (os.environ.get("DEFAULT_LANGUAGE") or "zh-tw").lower()
+    if not l:
+        return default
+    return mapping.get(l, l)
 
 def _language_policy(lang: Optional[str]) -> tuple[str, str]:
     l = _norm_lang(lang)
@@ -391,15 +394,15 @@ _USER_CONTENT_TEMPLATES = {
     },
     "zh-cn": {
         "guide": "字数约 {target_length}。",
-        "body": "请根据上述内容完成“{query}”。{guide}\n输出可以使用段落或项目符号。",
+        "body": "请根据上述内容完成“{query}”。{guide}\n输出可以使用段落或项目符号，务必遵守语言规则。",
     },
     "ja": {
         "guide": "目安の長さ: {target_length}。",
-        "body": "上記の内容に基づいて「{query}」を完成してください。{guide}\n段落または箇条書き可。",
+        "body": "上記の内容に基づいて「{query}」を完成してください。{guide}\n段落または箇条書き可。言語ルールを必ず守ってください。",
     },
     "ko": {
-        "guide": " 분량: 약 {target_length}.",
-        "body": "위 내용을 바탕으로 ‘{query}’를 완성하세요.{guide}\n단락 또는 불릿 허용.",
+        "guide": " 분량: 약 {target_length}자.",
+        "body": "위 내용을 바탕으로 ‘{query}’를 완성하세요.{guide}\n단락 또는 불릿 허용. 언어 규칙을 반드시 준수하세요.",
     },
     "fr": {
         "guide": " Longueur cible : {target_length}.",
