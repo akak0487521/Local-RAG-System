@@ -2,7 +2,7 @@ export const params = {
   apiBase: localStorage.getItem('apiBase') || '',
   apiKey: localStorage.getItem('apiKey') || '',
   mode: localStorage.getItem('mode') || 'creative',
-  lang: localStorage.getItem('lang') || 'zh-TW',
+  lang: localStorage.getItem('lang') || 'zh-tw',
   engine: localStorage.getItem('engine') || 'auto',
   targetLength: localStorage.getItem('targetLength') || '',
   threadId: localStorage.getItem('threadId') || '',

@@ -365,6 +365,9 @@ def _language_policy(lang: Optional[str]) -> tuple[str, str]:
     if l == "ko":
         return ("【언어 규칙】오직 한국어로만 답변하세요. 고유명사는 영어 표기를 허용하지만, 완전한 영어 문장은 만들지 마세요. 영어 인용은 한국어로 요약하세요. 코드/명령은 영어 가능하나 설명은 반드시 한국어로 작성하세요.",
                 "언어 규칙을 엄격히 준수: 한국어만 사용. 영어 문장 출력 금지. 고유명사 영어 표기는 허용하되 문장 금지. 인용은 한국어로 요약.")
+    if l == "fr":
+        return ("【Règles linguistiques】Utilisez uniquement le français ; les noms propres anglais peuvent rester mais ne formez pas de phrases complètes en anglais ; toute citation en anglais doit être reformulée en français ; le code/commande peut être en anglais mais les explications doivent être en français.",
+                "Respectez strictement les règles linguistiques : utilisez uniquement le français ; n'écrivez aucune phrase en anglais ; reformulez les citations anglaises en français.")
     if l == "en":
         return ("Use ONLY English. Proper nouns may remain in their original form. Summarize quotations in English. Code/commands may be English; explanatory text must be English.",
                 "Strictly use English only. No sentences in other languages. Proper nouns allowed; quotes must be summarized in English.")

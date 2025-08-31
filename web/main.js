@@ -104,7 +104,7 @@ hedRange.onchange = () => { params.hedging   = parseFloat(hedRange.value); saveP
 forRange.onchange = () => { params.formality = parseFloat(forRange.value); saveParams(); };
 
 saveParamsBtn.onclick = saveParams;
-resetParamsBtn.onclick = () => { Object.assign(params, { apiBase:'', apiKey:'', mode:'creative', lang:'zh-TW', engine:'auto', targetLength:'', threadId:'', k:6, rerank:true, namespace:'', canonicality:'' }); saveParams(); location.reload(); };
+ resetParamsBtn.onclick = () => { Object.assign(params, { apiBase:'', apiKey:'', mode:'creative', lang:'zh-tw', engine:'auto', targetLength:'', threadId:'', k:6, rerank:true, namespace:'', canonicality:'' }); saveParams(); location.reload(); };
 
 pingBtn.onclick = async () => {
   healthTxt.textContent = '檢查中…';
