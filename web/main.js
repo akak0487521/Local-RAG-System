@@ -231,7 +231,7 @@ function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;","
 
 // ====== 發送與串流 ======
 async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ragEnabled && selected.size>0)) return; inputEl.value = '';
-  const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'' }; sess.messages.push(assistant); persist(); const bubble = document.createElement('div'); bubble.className = 'msg assistant pending'; bubble.innerHTML = `<div class=\"role\">assistant<\/div><div class=\"content\"><span class=\"loader\" aria-label=\"thinking\"><\/span><\/div>`; const contentEl = bubble.querySelector('.content');
+  const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'' }; sess.messages.push(assistant); persist(); const bubble = appendBubble('assistant', ''); const contentEl = bubble.querySelector('.content');
   // 在這一輪對話綁定停止鍵，能移除等待動畫
   let gotAny = false;
   const prevStopHandler = stopBtn.onclick;
@@ -245,7 +245,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
     }
     // 還原舊的 handler，避免影響下一輪
     setTimeout(()=>{ stopBtn.onclick = prevStopHandler; }, 0);
-  }; chatEl.appendChild(bubble); chatEl.scrollTop = chatEl.scrollHeight;
+  }; chatEl.scrollTop = chatEl.scrollHeight;
   const payload = buildPayload(sess.messages, text);
   controller = new AbortController(); sendBtn.disabled = true; stopBtn.disabled = false; try{
     const res = await fetch(getApiBase()+ '/compose_stream', { method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'text/event-stream, text/plain', ...buildHeaders() }, body: JSON.stringify(payload), signal: controller.signal });
