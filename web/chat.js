@@ -3,10 +3,17 @@ import { store } from './storage.js';
 export function appendBubble(role, content){
   const chatEl = document.getElementById('chat');
   const wrap = document.createElement('div');
-  wrap.className = `msg ${role}`;
+  const pending = role === 'assistant' && !content;
+  wrap.className = `msg ${role}${pending ? ' pending' : ''}`;
   wrap.innerHTML = `<div class="role">${role}</div><div class="content"></div>`;
-  wrap.querySelector('.content').textContent = content;
+  const contentEl = wrap.querySelector('.content');
+  if(pending){
+    contentEl.innerHTML = '<span class="loader" aria-label="thinking"></span>';
+  }else{
+    contentEl.textContent = content;
+  }
   chatEl.appendChild(wrap);
+  return wrap;
 }
 
 export function renderAll(){
