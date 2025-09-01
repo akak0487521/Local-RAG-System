@@ -1,0 +1,19 @@
+# Modelfile: qwen3:8b-clean
+FROM qwen3:8b
+
+# 明確禁止外洩思考，但不強行 stop
+SYSTEM You are a helpful assistant. Output only the final answer for the user.
+SYSTEM Do NOT output internal thoughts, chain-of-thought, or <think> blocks.
+
+# 用 ChatML 風格的簡潔模板
+TEMPLATE """<|im_start|>system
+{{ .System }}
+<|im_end|>
+<|im_start|>user
+{{ .Prompt }}
+<|im_end|>
+<|im_start|>assistant
+"""
+
+# 視需要調整參數（可留白）
+PARAMETER temperature 0.6
