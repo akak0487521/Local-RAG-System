@@ -26,6 +26,72 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+class ThinkFolder:
+    """Incrementally separate reasoning and visible tokens.
+
+    The folder looks for <think>...</think> spans in the token stream and
+    emits events with type ``reasoning`` for the hidden portion and ``text``
+    for the visible portion. Tokens may arrive fragmented, so a small state
+    machine with a buffer is used to stitch together the tag boundaries.
+    """
+
+    START = "<think>"
+    END = "</think>"
+
+    def __init__(self) -> None:
+        self.state = "text"  # either "text" or "reasoning"
+        self.buf = ""
+
+    def feed(self, token: str):
+        """Feed a token and return any completed events."""
+        events = []
+        self.buf += token
+        while True:
+            if self.state == "text":
+                idx = self.buf.find(self.START)
+                if idx == -1:
+                    keep = self._longest_suffix(self.buf, self.START)
+                    emit = self.buf[:-len(keep)] if keep else self.buf
+                    if emit:
+                        events.append({"type": "text", "data": emit})
+                    self.buf = keep
+                    break
+                if idx > 0:
+                    events.append({"type": "text", "data": self.buf[:idx]})
+                self.buf = self.buf[idx + len(self.START) :]
+                self.state = "reasoning"
+            else:  # reasoning state
+                idx = self.buf.find(self.END)
+                if idx == -1:
+                    keep = self._longest_suffix(self.buf, self.END)
+                    emit = self.buf[:-len(keep)] if keep else self.buf
+                    if emit:
+                        events.append({"type": "reasoning", "data": emit})
+                    self.buf = keep
+                    break
+                if idx > 0:
+                    events.append({"type": "reasoning", "data": self.buf[:idx]})
+                self.buf = self.buf[idx + len(self.END) :]
+                self.state = "text"
+        return events
+
+    def flush(self):
+        """Flush remaining buffered tokens into a final event."""
+        events = []
+        if self.buf:
+            evt_type = "reasoning" if self.state == "reasoning" else "text"
+            events.append({"type": evt_type, "data": self.buf})
+            self.buf = ""
+        return events
+
+    @staticmethod
+    def _longest_suffix(buf: str, tag: str) -> str:
+        for i in range(1, len(tag)):
+            if buf.endswith(tag[:i]):
+                return tag[:i]
+        return ""
+
+
 @router.get("/threads")
 def list_threads(limit: int = 200, api_key: Optional[str] = Security(api_key_header)):
     _auth(api_key)
@@ -131,11 +197,13 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
         combined_ctx = (f"<<<HISTORY_START>>>\n{history_block}\n<<<HISTORY_END>>>\n\n" if history_block else "") + rag_context
     except Exception as e:
         def init_fail():
-            yield "data: " + json.dumps({"token": f"[compose_stream init error] {e}"}, ensure_ascii=False) + "\n\n"
+            payload = {"type": "text", "data": f"[compose_stream init error] {e}"}
+            yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
         return StreamingResponse(init_fail(), media_type="text/event-stream", headers=headers)
 
     def event_stream():
-        assistant_accum: List[str] = []
+        folder = ThinkFolder()
+        visible_buf: List[str] = []
         try:
             messages, temperature = _prepare_messages(
                 req.query,
@@ -145,7 +213,7 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
                 target_length=req.target_length,
                 style=req.style,
             )
-            yield f"data: {json.dumps({'token': ''})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'data': ''})}\n\n"
             stream, final_engine = generate(
                 messages,
                 engine=req.engine,
@@ -159,14 +227,21 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
                 preview = _preview_messages(final_engine, model, messages)
                 yield "data: " + json.dumps({"debug": preview}, ensure_ascii=False) + "\n\n"
             for token in stream:
-                assistant_accum.append(token)
-                yield f"data: {json.dumps({'token': token})}\n\n"
+                for evt in folder.feed(token):
+                    if evt.get("type") == "text":
+                        visible_buf.append(evt.get("data", ""))
+                    yield "data: " + json.dumps(evt, ensure_ascii=False) + "\n\n"
         except Exception as e:
-            yield f'data: {json.dumps({"token": f"[compose_stream error] {e}"})}\n\n'
+            err = {"type": "text", "data": f"[compose_stream error] {e}"}
+            yield f'data: {json.dumps(err)}\n\n'
             return
 
         try:
-            assistant_text = "".join(assistant_accum).strip()
+            for evt in folder.flush():
+                if evt.get("type") == "text":
+                    visible_buf.append(evt.get("data", ""))
+                yield "data: " + json.dumps(evt, ensure_ascii=False) + "\n\n"
+            assistant_text = "".join(visible_buf).strip()
             if assistant_text:
                 save_message(thread_id, "assistant", assistant_text, lang)
                 prev = get_summary(thread_id)
@@ -183,7 +258,9 @@ def compose_stream(req: ComposeRequest, api_key: Optional[str] = Security(api_ke
                 "language": lang,
             }
             yield f"data: {json.dumps(tail, ensure_ascii=False)}\n\n"
+            yield "event: done\n\n"
         except Exception as e:
-            yield f'data: {json.dumps({"token": f"[compose_stream error] {e}"})}\n\n'
+            err = {"type": "text", "data": f"[compose_stream error] {e}"}
+            yield f'data: {json.dumps(err)}\n\n'
 
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
