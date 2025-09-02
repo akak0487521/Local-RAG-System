@@ -233,14 +233,13 @@ function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;","
 async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ragEnabled && selected.size>0)) return; inputEl.value = '';
   const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'' }; sess.messages.push(assistant); persist(); const bubble = appendBubble('assistant', ''); const contentEl = bubble.querySelector('.content');
   // 在這一輪對話綁定停止鍵，能移除等待動畫
-  let gotAny = false;
   const prevStopHandler = stopBtn.onclick;
   stopBtn.onclick = () => {
     if(controller){ controller.abort(); stopBtn.disabled = true; }
     bubble.classList.remove('pending');
     if(!assistant.content){
       assistant.content = '[已停止]';
-      contentEl.textContent = assistant.content;
+      contentEl._textNode.textContent = assistant.content;
       persist();
     }
     // 還原舊的 handler，避免影響下一輪
@@ -258,22 +257,11 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         if(dataStr==='[DONE]') return;
         let obj;
         try{ obj = JSON.parse(dataStr); }
-        catch(e){ assistant.content += dataStr; contentEl.textContent = assistant.content; return; }
-
-        if(obj.type === 'text'){
-          if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; }
-          assistant.content += obj.data;
-          contentEl.textContent = assistant.content;
-          if(contentEl._reasonBlock) contentEl.appendChild(contentEl._reasonBlock);
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }else if(obj.type === 'reasoning'){
           appendReasoning(contentEl, obj.data);
         }else if(typeof obj.token === 'string'){
-          if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; }
-          assistant.content += obj.token;
-          contentEl.textContent = assistant.content;
-          if(contentEl._reasonBlock) contentEl.appendChild(contentEl._reasonBlock);
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }
@@ -285,18 +273,12 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
           const url = new URL(location.href);
           url.searchParams.set('threadId', obj.thread_id);
           history.replaceState(null, '', url);
-        }
-      }else{
-        if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; }
-        assistant.content += raw;
-        contentEl.textContent = assistant.content;
-        if(contentEl._reasonBlock) contentEl.appendChild(contentEl._reasonBlock);
         chatEl.scrollTop = chatEl.scrollHeight;
         persist();
       }
     }
     while(true){ const {value, done} = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), {stream: !done}); await flush(done); if(done) break; }
-  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; bubble.classList.remove('pending'); persist(); }
+  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl._textNode.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; bubble.classList.remove('pending'); persist(); }
 }
 
 function buildPayload(msgs, lastUserText){

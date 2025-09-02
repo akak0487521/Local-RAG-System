@@ -9,9 +9,10 @@ export function appendBubble(role, content){
   const contentEl = wrap.querySelector('.content');
   if(pending){
     contentEl.innerHTML = '<span class="loader" aria-label="thinking"></span>';
-  }else{
-    contentEl.textContent = content;
   }
+  const textNode = document.createTextNode(content || '');
+  contentEl.appendChild(textNode);
+  contentEl._textNode = textNode;
   chatEl.appendChild(wrap);
   return wrap;
 }
@@ -31,7 +32,6 @@ export function appendReasoning(node, text){
   }
   const pre = block.querySelector('pre');
   pre.textContent += text;
-  if(!block.isConnected) node.appendChild(block);
 }
 
 export function renderAll(){
