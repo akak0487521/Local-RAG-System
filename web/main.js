@@ -231,12 +231,17 @@ function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;","
 
 // ====== 發送與串流 ======
 async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ragEnabled && selected.size>0)) return; inputEl.value = '';
-  const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'' }; sess.messages.push(assistant); persist(); const bubble = appendBubble('assistant', ''); const contentEl = bubble.querySelector('.content');
+  const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'', reasoning:'' }; sess.messages.push(assistant); persist(); const bubble = appendBubble('assistant', ''); const contentEl = bubble.querySelector('.content');
+  function stopThinking(){
+    bubble.classList.remove('pending');
+    const loader = contentEl.querySelector('.loader');
+    if(loader) loader.remove();
+  }
   // 在這一輪對話綁定停止鍵，能移除等待動畫
   const prevStopHandler = stopBtn.onclick;
   stopBtn.onclick = () => {
     if(controller){ controller.abort(); stopBtn.disabled = true; }
-    bubble.classList.remove('pending');
+    stopThinking();
     if(!assistant.content){
       assistant.content = '[已停止]';
       contentEl._textNode.textContent = assistant.content;
@@ -261,14 +266,19 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         if(typeof obj.data === 'string' && (obj.type === 'text' || !obj.type)){
           assistant.content += obj.data;
           contentEl._textNode.textContent = assistant.content;
+          stopThinking();
           bubble.classList.remove('pending');
+
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }else if(obj.type === 'reasoning'){
           appendReasoning(contentEl, obj.data);
+          assistant.reasoning += obj.data;
+          persist();
         }else if(typeof obj.token === 'string'){
           assistant.content += obj.token;
           contentEl._textNode.textContent = assistant.content;
+          stopThinking();
           bubble.classList.remove('pending');
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
@@ -287,7 +297,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
       }
     }
     while(true){ const {value, done} = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), {stream: !done}); await flush(done); if(done) break; }
-  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl._textNode.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; bubble.classList.remove('pending'); persist(); }
+  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl._textNode.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; stopThinking(); persist(); }
 }
 
 function buildPayload(msgs, lastUserText){

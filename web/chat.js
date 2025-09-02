@@ -42,7 +42,10 @@ export function renderAll(){
   chatEl.innerHTML = '';
   const { messages } = store.sessions[store.currentId];
   for (const m of messages){
-    appendBubble(m.role, m.content);
+    const bubble = appendBubble(m.role, m.content);
+    if(m.role === 'assistant' && m.reasoning){
+      appendReasoning(bubble.querySelector('.content'), m.reasoning);
+    }
   }
   chatEl.scrollTop = chatEl.scrollHeight;
 }
