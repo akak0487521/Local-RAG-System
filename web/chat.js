@@ -32,11 +32,6 @@ export function appendReasoning(node, text){
   }
   const pre = block.querySelector('pre');
   pre.textContent += text;
-  if(node._textNode){
-    node.insertBefore(block, node._textNode);
-  }else{
-    node.prepend(block);
-  }
 }
 
 export function renderAll(){

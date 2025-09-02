@@ -257,28 +257,11 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         if(dataStr==='[DONE]') return;
         let obj;
         try{ obj = JSON.parse(dataStr); }
-        catch(e){ assistant.content += dataStr; contentEl._textNode.textContent = assistant.content; return; }
-
-        if(obj.type === 'text'){
-          if(bubble.classList.contains('pending')){
-            bubble.classList.remove('pending');
-            const loader = contentEl.querySelector('.loader');
-            if(loader) loader.remove();
-          }
-          assistant.content += obj.data;
-          contentEl._textNode.textContent = assistant.content;
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }else if(obj.type === 'reasoning'){
           appendReasoning(contentEl, obj.data);
         }else if(typeof obj.token === 'string'){
-          if(bubble.classList.contains('pending')){
-            bubble.classList.remove('pending');
-            const loader = contentEl.querySelector('.loader');
-            if(loader) loader.remove();
-          }
-          assistant.content += obj.token;
-          contentEl._textNode.textContent = assistant.content;
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }
@@ -290,15 +273,6 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
           const url = new URL(location.href);
           url.searchParams.set('threadId', obj.thread_id);
           history.replaceState(null, '', url);
-        }
-      }else{
-        if(bubble.classList.contains('pending')){
-          bubble.classList.remove('pending');
-          const loader = contentEl.querySelector('.loader');
-          if(loader) loader.remove();
-        }
-        assistant.content += raw;
-        contentEl._textNode.textContent = assistant.content;
         chatEl.scrollTop = chatEl.scrollHeight;
         persist();
       }
