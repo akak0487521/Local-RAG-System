@@ -267,6 +267,8 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
           assistant.content += obj.data;
           contentEl._textNode.textContent = assistant.content;
           stopThinking();
+          bubble.classList.remove('pending');
+
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }else if(obj.type === 'reasoning'){
@@ -277,6 +279,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
           assistant.content += obj.token;
           contentEl._textNode.textContent = assistant.content;
           stopThinking();
+          bubble.classList.remove('pending');
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }
