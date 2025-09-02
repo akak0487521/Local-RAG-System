@@ -1,6 +1,6 @@
 import { params, saveParams } from "./params.js";
 import { store, newId, persist } from "./storage.js";
-import { renderAll, appendBubble } from "./chat.js";
+import { renderAll, appendBubble, appendReasoning } from "./chat.js";
 
 // ====== 狀態 ======
 let controller = null;                  // 取消用
@@ -233,14 +233,13 @@ function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;","
 async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ragEnabled && selected.size>0)) return; inputEl.value = '';
   const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'' }; sess.messages.push(assistant); persist(); const bubble = appendBubble('assistant', ''); const contentEl = bubble.querySelector('.content');
   // 在這一輪對話綁定停止鍵，能移除等待動畫
-  let gotAny = false;
   const prevStopHandler = stopBtn.onclick;
   stopBtn.onclick = () => {
     if(controller){ controller.abort(); stopBtn.disabled = true; }
     bubble.classList.remove('pending');
     if(!assistant.content){
       assistant.content = '[已停止]';
-      contentEl.textContent = assistant.content;
+      contentEl._textNode.textContent = assistant.content;
       persist();
     }
     // 還原舊的 handler，避免影響下一輪
@@ -253,22 +252,49 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
     const reader = res.body.getReader(); const decoder = new TextDecoder('utf-8'); let buffer = '';
     async function flush(done=false){ let idx; while((idx = buffer.indexOf('\n\n')) !== -1){ const raw = buffer.slice(0, idx).trim(); buffer = buffer.slice(idx+2); handleStreamChunk(raw); } if(done && buffer.trim()){ handleStreamChunk(buffer.trim()); buffer = ''; } }
     function handleStreamChunk(raw){ if(!raw) return; // 支援兩種：純文字 / SSE data: JSON
-      if(raw.startsWith('data:')){ const dataStr = raw.replace(/^data:\s*/, ''); if(dataStr==='[DONE]') return; try{ const obj = JSON.parse(dataStr); if(typeof obj.token==='string'){
-          if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; }
-          assistant.content += obj.token; contentEl.textContent = assistant.content; chatEl.scrollTop = chatEl.scrollHeight; persist(); } if(typeof obj.used_hits==='number'){ ragHint.textContent = `used_hits=${obj.used_hits}`; } if(typeof obj.engine==='string'){ ragHint.textContent += (ragHint.textContent?' · ':'')+`engine=${obj.engine}`; } 
-        // 解析完 obj 後，緊接著加入：
-          if (typeof obj.thread_id === 'string' && !params.threadId) {
-            params.threadId = obj.thread_id;
-            const url = new URL(location.href);
-            url.searchParams.set('threadId', obj.thread_id);
-            history.replaceState(null, '', url);
+      if(raw.startsWith('data:')){
+        const dataStr = raw.replace(/^data:\s*/, '');
+        if(dataStr==='[DONE]') return;
+        let obj;
+        try{ obj = JSON.parse(dataStr); }
+        catch(e){ assistant.content += dataStr; contentEl._textNode.textContent = assistant.content; return; }
+
+        if(obj.type === 'text'){
+          if(bubble.classList.contains('pending')){
+            bubble.classList.remove('pending');
+            const loader = contentEl.querySelector('.loader');
+            if(loader) loader.remove();
           }
+          assistant.content += obj.data;
+          contentEl._textNode.textContent = assistant.content;
+          chatEl.scrollTop = chatEl.scrollHeight;
+          persist();
+        }else if(obj.type === 'reasoning'){
+          appendReasoning(contentEl, obj.data);
         }
-          catch(e){ assistant.content += dataStr; contentEl.textContent = assistant.content; }
-      }else{ if(!gotAny){ bubble.classList.remove('pending'); gotAny = true; } assistant.content += raw; contentEl.textContent = assistant.content; chatEl.scrollTop = chatEl.scrollHeight; persist(); }
+        if(typeof obj.used_hits==='number'){ ragHint.textContent = `used_hits=${obj.used_hits}`; }
+        if(typeof obj.engine==='string'){ ragHint.textContent += (ragHint.textContent?' · ':'')+`engine=${obj.engine}`; }
+        // 解析完 obj 後，緊接著加入：
+        if (typeof obj.thread_id === 'string' && !params.threadId) {
+          params.threadId = obj.thread_id;
+          const url = new URL(location.href);
+          url.searchParams.set('threadId', obj.thread_id);
+          history.replaceState(null, '', url);
+        }
+      }else{
+        if(bubble.classList.contains('pending')){
+          bubble.classList.remove('pending');
+          const loader = contentEl.querySelector('.loader');
+          if(loader) loader.remove();
+        }
+        assistant.content += raw;
+        contentEl._textNode.textContent = assistant.content;
+        chatEl.scrollTop = chatEl.scrollHeight;
+        persist();
+      }
     }
     while(true){ const {value, done} = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), {stream: !done}); await flush(done); if(done) break; }
-  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; bubble.classList.remove('pending'); persist(); }
+  }catch(err){ assistant.content += `\n[error] ${err?.message||err}`; contentEl._textNode.textContent = assistant.content; } finally { sendBtn.disabled = false; stopBtn.disabled = true; controller = null; bubble.classList.remove('pending'); persist(); }
 }
 
 function buildPayload(msgs, lastUserText){
