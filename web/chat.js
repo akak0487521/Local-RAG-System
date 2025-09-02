@@ -16,6 +16,24 @@ export function appendBubble(role, content){
   return wrap;
 }
 
+export function appendReasoning(node, text){
+  if(!node) return;
+  let block = node._reasonBlock;
+  if(!block){
+    block = document.createElement('details');
+    block.className = 'reasoning-block';
+    const summary = document.createElement('summary');
+    summary.textContent = '推理過程';
+    const pre = document.createElement('pre');
+    block.appendChild(summary);
+    block.appendChild(pre);
+    node._reasonBlock = block;
+  }
+  const pre = block.querySelector('pre');
+  pre.textContent += text;
+  if(!block.isConnected) node.appendChild(block);
+}
+
 export function renderAll(){
   const chatEl = document.getElementById('chat');
   chatEl.innerHTML = '';
