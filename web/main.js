@@ -257,11 +257,19 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         if(dataStr==='[DONE]') return;
         let obj;
         try{ obj = JSON.parse(dataStr); }
+        catch{ obj = { data: dataStr }; }
+        if(typeof obj.data === 'string' && (obj.type === 'text' || !obj.type)){
+          assistant.content += obj.data;
+          contentEl._textNode.textContent = assistant.content;
+          bubble.classList.remove('pending');
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }else if(obj.type === 'reasoning'){
           appendReasoning(contentEl, obj.data);
         }else if(typeof obj.token === 'string'){
+          assistant.content += obj.token;
+          contentEl._textNode.textContent = assistant.content;
+          bubble.classList.remove('pending');
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }
@@ -273,6 +281,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
           const url = new URL(location.href);
           url.searchParams.set('threadId', obj.thread_id);
           history.replaceState(null, '', url);
+        }
         chatEl.scrollTop = chatEl.scrollHeight;
         persist();
       }

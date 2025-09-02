@@ -32,11 +32,9 @@ export function appendReasoning(node, text){
   }
   const pre = block.querySelector('pre');
   pre.textContent += text;
-  if(node._textNode){
-    node.insertBefore(block, node._textNode);
-  }else{
-    node.prepend(block);
-  }
+  // Ensure reasoning block is always displayed above the generated content
+  // regardless of whether a text node already exists.
+  node.prepend(block);
 }
 
 export function renderAll(){
