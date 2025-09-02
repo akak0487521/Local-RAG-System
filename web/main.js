@@ -231,7 +231,15 @@ function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;","
 
 // ====== 發送與串流 ======
 async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ragEnabled && selected.size>0)) return; inputEl.value = '';
-  const sess = sessions[store.currentId]; if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); } persist(); const assistant = { role:'assistant', content:'', reasoning:'' }; sess.messages.push(assistant); persist(); const bubble = appendBubble('assistant', ''); const contentEl = bubble.querySelector('.content');
+  const sess = sessions[store.currentId];
+  if(text) { sess.messages.push({role:'user', content:text}); appendBubble('user', text); }
+  persist();
+  const assistant = { role:'assistant', content:'', reasoning:'' };
+  sess.messages.push(assistant);
+  persist();
+  const bubble = appendBubble('assistant', '');
+  const contentEl = bubble.querySelector('.content');
+  let hasStarted = false;
   function stopThinking(){
     bubble.classList.remove('pending');
     const loader = contentEl.querySelector('.loader');
@@ -266,9 +274,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         if(typeof obj.data === 'string' && (obj.type === 'text' || !obj.type)){
           assistant.content += obj.data;
           contentEl._textNode.textContent = assistant.content;
-          stopThinking();
-          bubble.classList.remove('pending');
-
+          if(!hasStarted){ hasStarted = true; stopThinking(); }
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }else if(obj.type === 'reasoning'){
@@ -278,8 +284,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         }else if(typeof obj.token === 'string'){
           assistant.content += obj.token;
           contentEl._textNode.textContent = assistant.content;
-          stopThinking();
-          bubble.classList.remove('pending');
+          if(!hasStarted){ hasStarted = true; stopThinking(); }
           chatEl.scrollTop = chatEl.scrollHeight;
           persist();
         }
