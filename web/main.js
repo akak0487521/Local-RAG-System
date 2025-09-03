@@ -271,7 +271,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
         let obj;
         try{ obj = JSON.parse(dataStr); }
         catch{ obj = { data: dataStr }; }
-        if(typeof obj.data === 'string' && (obj.type === 'text' || !obj.type)){
+        if(typeof obj.data === 'string' && obj.data && (obj.type === 'text' || !obj.type)){
           assistant.content += obj.data;
           contentEl._textNode.textContent = assistant.content;
           if(!hasStarted){ hasStarted = true; stopThinking(); }
@@ -281,7 +281,7 @@ async function send(){ const text = inputEl.value.trim(); if(!text && !(store.ra
           appendReasoning(contentEl, obj.data);
           assistant.reasoning += obj.data;
           persist();
-        }else if(typeof obj.token === 'string'){
+        }else if(typeof obj.token === 'string' && obj.token){
           assistant.content += obj.token;
           contentEl._textNode.textContent = assistant.content;
           if(!hasStarted){ hasStarted = true; stopThinking(); }
