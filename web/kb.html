@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>知識庫管理</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <h1>知識庫管理</h1>
+  <button type="button" onclick="window.location.href='index.html'">返回主頁</button>
+  <div class="kb-search">
+    <input type="text" id="searchInput" placeholder="搜尋文件" />
+    <button id="searchBtn" type="button">搜尋</button>
+  </div>
+  <form id="uploadForm">
+    <input type="text" id="title" placeholder="標題" required />
+    <input type="text" id="source" placeholder="來源" />
+    <input type="file" id="file" required />
+    <button type="submit">上傳</button>
+  </form>
+  <div id="folderTree"></div>
+  <table class="kb-list">
+    <thead>
+      <tr><th>標題</th><th>來源</th><th>操作</th></tr>
+    </thead>
+    <tbody id="docTable"></tbody>
+  </table>
+  <script type="module" src="kb.js"></script>
+</body>
+</html>
