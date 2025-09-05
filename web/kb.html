@@ -27,6 +27,23 @@
     </thead>
     <tbody id="docTable"></tbody>
   </table>
+  <div id="docModal" style="display:none;">
+    <form id="docForm">
+      <label>ID <input type="text" id="docId" /></label>
+      <label>Namespace <input type="text" id="docNamespace" /></label>
+      <label>Type <input type="text" id="docType" /></label>
+      <label>Title <input type="text" id="docTitle" /></label>
+      <label>Summary <input type="text" id="docSummary" /></label>
+      <label>Body <textarea id="docBody"></textarea></label>
+      <label>Tags <input type="text" id="docTags" placeholder="tag1, tag2" /></label>
+      <label>Canonicality <input type="text" id="docCanonicality" /></label>
+      <label>Version <input type="text" id="docVersion" /></label>
+      <div class="actions">
+        <button type="button" onclick="saveDoc()">Save</button>
+        <button type="button" onclick="hideDocModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
   <script type="module" src="kb.js"></script>
 </body>
 </html>
