@@ -93,5 +93,20 @@ scripts/ingest_docs_to_chroma.py – alternative ingestion helper.
 scripts/query_local.py – command-line querying of the index.
 scripts/rag_ask.py – convenience wrapper for asking questions via the API.
 
+## Manual Front-end Testing
+
+1. Start the API server:
+
+   ```bash
+   uvicorn api.app:app --reload
+   ```
+
+2. Open `http://localhost:8000/app/index.html` to exercise the chat interface.
+
+3. Visit `http://localhost:8000/app/kb.html` to manage documents:
+   - Fill in a title and choose a file, then click **上傳** to upload.
+   - Confirm the document appears in the table.
+   - Use the delete button to remove the document and verify it disappears from the list.
+
 ## Contributing
 This project is provided as a starter template. Feel free to fork and adapt it for your own RAG experiments or internal tools.
