@@ -108,3 +108,11 @@ button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
 .reasoning-block { margin-top:.5rem; font-size:.9em; opacity:.85; }
 .reasoning-block summary { cursor:pointer; }
 .reasoning-block pre { white-space:pre-wrap; margin:.25rem 0 0; }
+
+/* --- Simple modal --- */
+#docModal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;justify-content:center;align-items:center;}
+#docModal.show{display:flex;}
+#docModal form{background:var(--panel);padding:20px;border-radius:8px;max-width:600px;width:90%;max-height:90%;overflow:auto;display:flex;flex-direction:column;gap:8px;}
+#docModal label{display:flex;flex-direction:column;font-size:14px;gap:4px;}
+#docModal textarea{min-height:120px;}
+/* --- End modal --- */

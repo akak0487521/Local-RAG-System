@@ -8,7 +8,7 @@ async function loadDocs(q=''){
     const docs = data.docs || [];
     docs.forEach(d => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${d.title||''}</td><td>${d.file||d.source||''}</td><td><button onclick="editDoc('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button></td>`;
+      tr.innerHTML = `<td>${d.title||''}</td><td>${d.file||d.source||''}</td><td><button onclick="openEditModal('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button></td>`;
       tbody.appendChild(tr);
     });
     const treeDiv = document.getElementById('folderTree');
@@ -51,7 +51,7 @@ function renderTree(node, parent){
   if(node.docs){
     node.docs.forEach(d => {
       const li = document.createElement('li');
-      li.innerHTML = `${d.title||''} <span class="muted">${d.file||d.source||''}</span> <button onclick="editDoc('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button>`;
+      li.innerHTML = `${d.title||''} <span class="muted">${d.file||d.source||''}</span> <button onclick="openEditModal('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button>`;
       ul.appendChild(li);
     });
   }
@@ -77,17 +77,58 @@ async function uploadDoc(ev){
   loadDocs();
 }
 
-async function editDoc(id){
-  const title = prompt('新標題?');
-  if(title===null) return;
-  const source = prompt('新來源?');
-  if(source===null) return;
-  await fetch(`/docs/${id}`, {
-    method:'PUT',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ title, source })
-  });
-  loadDocs();
+async function openEditModal(id){
+  try{
+    const res = await fetch(`/docs/${id}`);
+    if(!res.ok) throw new Error('not found');
+    const data = await res.json();
+    const doc = (()=>{ try{ return JSON.parse(data.content||'{}'); }catch{ return {}; } })();
+    document.getElementById('docId').value = doc.id || data.id || '';
+    document.getElementById('docNamespace').value = doc.namespace || (data.metadata||{}).namespace || '';
+    document.getElementById('docType').value = doc.type || (data.metadata||{}).type || '';
+    document.getElementById('docTitle').value = doc.title || data.title || '';
+    document.getElementById('docSummary').value = doc.summary || (data.metadata||{}).summary || '';
+    const bodyField = document.getElementById('docBody');
+    bodyField.value = doc.body ? JSON.stringify(doc.body, null, 2) : (data.content||'');
+    document.getElementById('docTags').value = (doc.tags || (data.metadata||{}).tags || []).join(', ');
+    document.getElementById('docCanonicality').value = doc.canonicality || (data.metadata||{}).canonicality || '';
+    document.getElementById('docVersion').value = doc.version || (data.metadata||{}).version || '';
+    document.getElementById('docModal').classList.add('show');
+  }catch(e){ console.error('openEditModal error', e); }
+}
+
+function hideDocModal(){
+  document.getElementById('docModal').classList.remove('show');
+}
+
+async function saveDoc(){
+  const id = document.getElementById('docId').value.trim();
+  const namespace = document.getElementById('docNamespace').value.trim();
+  const type = document.getElementById('docType').value.trim();
+  const title = document.getElementById('docTitle').value.trim();
+  const summary = document.getElementById('docSummary').value.trim();
+  const bodyText = document.getElementById('docBody').value.trim();
+  let body;
+  try{ body = bodyText ? JSON.parse(bodyText) : {}; }
+  catch(e){ alert('Body JSON 格式錯誤'); return; }
+  const tags = document.getElementById('docTags').value.split(',').map(t=>t.trim()).filter(Boolean);
+  const canonicality = document.getElementById('docCanonicality').value.trim();
+  const version = document.getElementById('docVersion').value.trim();
+  const doc = { id, namespace, type, title, summary, body, tags, canonicality, version };
+  const payload = {
+    title,
+    content: JSON.stringify(doc, null, 2),
+    metadata: { namespace, type, summary, tags, canonicality, version }
+  };
+  try{
+    await fetch(`/docs/${id}`, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    hideDocModal();
+    loadDocs();
+  }catch(e){ console.error('saveDoc error', e); }
 }
 
 async function deleteDoc(id){
@@ -106,6 +147,8 @@ document.getElementById('searchInput').addEventListener('keydown', e => {
     loadDocs(e.target.value.trim());
   }
 });
-window.editDoc = editDoc;
+window.openEditModal = openEditModal;
+window.saveDoc = saveDoc;
+window.hideDocModal = hideDocModal;
 window.deleteDoc = deleteDoc;
 loadDocs();
