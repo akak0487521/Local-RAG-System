@@ -8,7 +8,7 @@ async function loadDocs(q=''){
     const docs = data.docs || [];
     docs.forEach(d => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${d.title||''}</td><td>${d.source||''}</td><td><button onclick="editDoc('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button></td>`;
+      tr.innerHTML = `<td>${d.title||''}</td><td>${d.file||d.source||''}</td><td><button onclick="editDoc('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button></td>`;
       tbody.appendChild(tr);
     });
     const treeDiv = document.getElementById('folderTree');
@@ -21,7 +21,7 @@ async function loadDocs(q=''){
 function buildTree(docs){
   const root = {};
   docs.forEach(d => {
-    const parts = (d.path || d.folder || '').split('/').filter(Boolean);
+    const parts = (d.folder || d.path || '').split('/').filter(Boolean);
     let node = root;
     parts.forEach(p => {
       node.children = node.children || {};
@@ -51,7 +51,7 @@ function renderTree(node, parent){
   if(node.docs){
     node.docs.forEach(d => {
       const li = document.createElement('li');
-      li.innerHTML = `${d.title||''} <span class="muted">${d.source||''}</span> <button onclick="editDoc('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button>`;
+      li.innerHTML = `${d.title||''} <span class="muted">${d.file||d.source||''}</span> <button onclick="editDoc('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button>`;
       ul.appendChild(li);
     });
   }

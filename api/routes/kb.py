@@ -41,13 +41,19 @@ def docs_list(api_key: Optional[str] = Security(api_key_header)):
     docs = []
     if not Path(DOCS_DIR).exists():
         return {"docs": docs}
-    for fp in Path(DOCS_DIR).rglob("*.json"):
+    base = Path(DOCS_DIR)
+    for fp in base.rglob("*.json"):
         try:
             data = json.loads(fp.read_text("utf-8"))
+            rel_path = fp.relative_to(base)
+            folder = str(rel_path.parent)
             docs.append({
                 "id": data.get("id"),
                 "title": data.get("title"),
                 "metadata": data.get("metadata") or {},
+                "path": str(rel_path),
+                "folder": folder,
+                "file": rel_path.name,
             })
         except Exception:
             continue
