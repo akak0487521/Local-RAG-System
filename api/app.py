@@ -281,6 +281,39 @@ def _index_doc_to_stores(payload: Dict[str, Any]):
     finally:
         conn.close()
 
+def _delete_doc_from_stores(doc_id: str, source_key: Optional[str] = None):
+    """移除指定文件的索引（SQLite FTS + Chroma）"""
+    try:
+        conn = sqlite3.connect(KB_DB_PATH)
+        try:
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(id, title, text, metadata)")
+            conn.execute("DELETE FROM docs WHERE id=?", (doc_id,))
+            conn.execute("DELETE FROM docs_registry WHERE doc_id=?", (doc_id,))
+            if source_key:
+                conn.execute("DELETE FROM docs_registry WHERE source_key=?", (source_key,))
+            conn.execute("DELETE FROM ingest_registry WHERE last_doc_id=?", (doc_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"SQLite delete failed: {e}")
+
+    try:
+        import chromadb
+        client = chromadb.PersistentClient(path=PERSIST_DIR)
+        col = client.get_or_create_collection(name=COLLECTION_NAME)
+        try:
+            col.delete(ids=[doc_id])
+        except Exception:
+            pass
+        if source_key:
+            try:
+                col.delete(where={"source_key": source_key})
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Chroma delete failed: {e}")
+
 # --- Recency scoring（時間衰減） ---
 
 def _hit_updated_ts(h: Dict[str, Any]) -> int:  # NEW
