@@ -65,6 +65,7 @@ async function uploadDoc(ev){
   const file = document.getElementById('file').files[0];
   if(!file) return;
   const text = await file.text();
+
   const payload = { title, content:text };
   if(source) payload.metadata = { source };
   await fetch('/docs/save', {
