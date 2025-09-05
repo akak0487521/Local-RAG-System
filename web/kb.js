@@ -65,10 +65,13 @@ async function uploadDoc(ev){
   const file = document.getElementById('file').files[0];
   if(!file) return;
   const text = await file.text();
+
+  const payload = { title, content:text };
+  if(source) payload.metadata = { source };
   await fetch('/docs/save', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ title, content:text, metadata:{ source } })
+    body: JSON.stringify(payload)
   });
   ev.target.reset();
   loadDocs();
