@@ -99,6 +99,7 @@ function renderObjectRow(key, value){
   const keyLabel = document.createElement('span');
   keyLabel.className = 'tree-label';
   keyLabel.textContent = key;
+  makeEditable(keyLabel);
   const valDiv = document.createElement('div');
   valDiv.className = 'tree-value';
   valDiv.appendChild(renderValue(value));
@@ -170,7 +171,19 @@ function renderPrimitive(value){
   span.className = 'tree-label';
   span.dataset.type = 'primitive';
   span.textContent = value;
+  makeEditable(span);
   return span;
+}
+
+function makeEditable(el){
+  el.contentEditable = true;
+  el.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      el.blur();
+    }
+  });
 }
 
 function addChild(container){
