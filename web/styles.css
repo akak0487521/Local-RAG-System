@@ -152,6 +152,10 @@ button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
   align-items:center;
   cursor:pointer;
 }
+
+#docBodyEditor .tree-row .tree-label{flex:1;}
+#docBodyEditor .tree-row .tree-add-child,
+#docBodyEditor .tree-row .tree-remove{flex:0 0 auto;}
 #docBodyEditor .tree-add-child{background:var(--brand-2);color:#052018;}
 #docBodyEditor .tree-remove{background:var(--danger);color:#fff;}
 /* --- End modal --- */
