@@ -1,3 +1,7 @@
+import { params } from "./params.js";
+
+function buildHeaders(extra={}){ const h = { ...extra }; if(params.apiKey) h['x-api-key'] = params.apiKey; return h; }
+
 async function loadDocs(q=''){
   try{
     const url = '/docs/list' + (q ? `?q=${encodeURIComponent(q)}` : '');
@@ -79,22 +83,34 @@ async function uploadDoc(ev){
 
 async function openEditModal(id){
   try{
-    const res = await fetch(`/docs/${id}`);
-    if(!res.ok) throw new Error('not found');
+    const res = await fetch(`/docs/${id}`, { headers: buildHeaders() });
+    if(!res.ok){ alert('取得文件失敗'); return; }
     const data = await res.json();
-    const doc = (()=>{ try{ return JSON.parse(data.content||'{}'); }catch{ return {}; } })();
-    document.getElementById('docId').value = doc.id || data.id || '';
-    document.getElementById('docNamespace').value = doc.namespace || (data.metadata||{}).namespace || '';
-    document.getElementById('docType').value = doc.type || (data.metadata||{}).type || '';
-    document.getElementById('docTitle').value = doc.title || data.title || '';
-    document.getElementById('docSummary').value = doc.summary || (data.metadata||{}).summary || '';
+    let doc;
+    try{ doc = JSON.parse(data.content||'{}'); }
+    catch{ doc = { id:data.id, title:data.title, body:data.content, ...(data.metadata||{}) }; }
+    doc.id = doc.id || data.id || '';
+    doc.namespace = doc.namespace || (data.metadata||{}).namespace || '';
+    doc.type = doc.type || (data.metadata||{}).type || '';
+    doc.title = doc.title || data.title || '';
+    doc.summary = doc.summary || (data.metadata||{}).summary || '';
+    doc.body = doc.body || data.content || '';
+    doc.tags = doc.tags || (data.metadata||{}).tags || [];
+    doc.canonicality = doc.canonicality || (data.metadata||{}).canonicality || '';
+    doc.version = doc.version || (data.metadata||{}).version || '';
+    document.getElementById('docId').value = doc.id;
+    document.getElementById('docNamespace').value = doc.namespace;
+    document.getElementById('docType').value = doc.type;
+    document.getElementById('docTitle').value = doc.title;
+    document.getElementById('docSummary').value = doc.summary;
     const bodyField = document.getElementById('docBody');
-    bodyField.value = doc.body ? JSON.stringify(doc.body, null, 2) : (data.content||'');
-    document.getElementById('docTags').value = (doc.tags || (data.metadata||{}).tags || []).join(', ');
-    document.getElementById('docCanonicality').value = doc.canonicality || (data.metadata||{}).canonicality || '';
-    document.getElementById('docVersion').value = doc.version || (data.metadata||{}).version || '';
+    if(typeof doc.body === 'object'){ bodyField.value = JSON.stringify(doc.body, null, 2); }
+    else{ bodyField.value = doc.body; }
+    document.getElementById('docTags').value = (doc.tags || []).join(', ');
+    document.getElementById('docCanonicality').value = doc.canonicality;
+    document.getElementById('docVersion').value = doc.version;
     document.getElementById('docModal').classList.add('show');
-  }catch(e){ console.error('openEditModal error', e); }
+  }catch(e){ console.error('openEditModal error', e); alert('載入文件發生錯誤'); }
 }
 
 function hideDocModal(){
@@ -121,14 +137,15 @@ async function saveDoc(){
     metadata: { namespace, type, summary, tags, canonicality, version }
   };
   try{
-    await fetch(`/docs/${id}`, {
+    const res = await fetch(`/docs/${id}`, {
       method:'PUT',
-      headers:{'Content-Type':'application/json'},
+      headers:{ 'Content-Type':'application/json', ...buildHeaders() },
       body: JSON.stringify(payload)
     });
+    if(!res.ok){ alert('儲存失敗'); return; }
     hideDocModal();
     loadDocs();
-  }catch(e){ console.error('saveDoc error', e); }
+  }catch(e){ console.error('saveDoc error', e); alert('儲存時發生錯誤'); }
 }
 
 async function deleteDoc(id){
