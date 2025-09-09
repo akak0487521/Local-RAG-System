@@ -220,19 +220,6 @@ function makeEditable(el){
       el.blur();
     }
   });
-
-function makeEditable(el){
-  el.contentEditable = true;
-  el.addEventListener('click', e => {
-    e.stopPropagation();
-  });
-  el.addEventListener('keydown', e => {
-    e.stopPropagation();
-    if(e.key === 'Enter'){
-      e.preventDefault();
-      el.blur();
-    }
-  });
 }
 
 function addChild(container){
