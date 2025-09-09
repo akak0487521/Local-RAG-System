@@ -120,9 +120,10 @@ function renderObject(obj){
 function renderObjectRow(key, value){
   const row = document.createElement('div');
   row.className = 'tree-row';
-  const keyLabel = document.createElement('span');
+  const keyLabel = document.createElement('textarea');
   keyLabel.className = 'tree-label';
-  keyLabel.textContent = key;
+  keyLabel.value = key;
+  keyLabel.rows = 1;
   makeEditable(keyLabel);
   const valDiv = document.createElement('div');
   valDiv.className = 'tree-value';
@@ -196,13 +197,29 @@ function renderArrayRow(value){
 }
 
 function renderPrimitive(value){
-  const span = document.createElement('span');
-  span.className = 'tree-label';
-  span.dataset.type = 'primitive';
-  span.textContent = value;
-  makeEditable(span);
-  return span;
+  const ta = document.createElement('textarea');
+  ta.className = 'tree-label';
+  ta.dataset.type = 'primitive';
+  ta.value = value;
+  ta.rows = 1;
+  makeEditable(ta);
+  return ta;
 }
+
+function makeEditable(el){
+  if(!(el instanceof HTMLTextAreaElement)){
+    el.contentEditable = true;
+  }
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+  });
+  el.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      el.blur();
+    }
+  });
 
 function makeEditable(el){
   el.contentEditable = true;
@@ -250,7 +267,8 @@ function readValue(node){
     const obj = {};
     Array.from(node.children).forEach(ch => {
       if(!ch.classList.contains('tree-row')) return;
-      const key = ch.querySelector('.tree-label')?.textContent || '';
+      const keyEl = ch.querySelector('.tree-label');
+      const key = keyEl ? (keyEl.tagName === 'TEXTAREA' ? keyEl.value.trim() : keyEl.textContent.trim()) : '';
       const valNode = ch.querySelector('.tree-value').firstElementChild;
       if(key) obj[key] = readValue(valNode);
     });
@@ -264,7 +282,7 @@ function readValue(node){
     });
     return arr;
   }else{
-    const val = node.textContent.trim();
+    const val = node.tagName === 'TEXTAREA' ? node.value.trim() : node.textContent.trim();
     if(val === '') return '';
     try{ return JSON.parse(val); }
     catch{ return val; }
