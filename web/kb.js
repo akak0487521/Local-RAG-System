@@ -113,7 +113,7 @@ function renderObjectRow(key, value){
     e.preventDefault();
     e.stopPropagation();
     const container = e.currentTarget.previousElementSibling;
-    addChild(
+    addChild(container);
   });
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
