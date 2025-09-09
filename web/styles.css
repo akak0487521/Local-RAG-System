@@ -103,6 +103,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 @media (max-width: 860px){ .layout{grid-template-columns: 1fr;} .sidebar{display:none} .right{display:none} }
   /* actions 區塊與小按鈕 */
 .msg .actions{ grid-column: 2; display:flex; gap:8px; align-items:center; margin-top:6px; }
+
 button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
 
 .reasoning-block { margin-top:.5rem; font-size:.9em; opacity:.85; }
