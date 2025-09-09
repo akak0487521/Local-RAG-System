@@ -207,9 +207,10 @@ function renderPrimitive(value){
 }
 
 function makeEditable(el){
+
   if(!(el instanceof HTMLTextAreaElement)){
     el.contentEditable = true;
-  }
+ main
   el.addEventListener('click', e => {
     e.stopPropagation();
   });
