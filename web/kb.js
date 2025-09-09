@@ -83,8 +83,8 @@ function renderObject(obj){
   });
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
-  addBtn.textContent = '+';
-  addBtn.className = 'tree-add';
+  addBtn.textContent = '增加下層';
+  addBtn.className = 'tree-add-child';
   addBtn.onclick = () => div.insertBefore(renderObjectRow('', ''), addBtn);
   div.appendChild(addBtn);
   return div;
@@ -93,18 +93,23 @@ function renderObject(obj){
 function renderObjectRow(key, value){
   const row = document.createElement('div');
   row.className = 'tree-row';
-  const keyInput = document.createElement('input');
-  keyInput.className = 'tree-key';
-  keyInput.value = key;
+  const keyLabel = document.createElement('span');
+  keyLabel.className = 'tree-label';
+  keyLabel.textContent = key;
   const valDiv = document.createElement('div');
   valDiv.className = 'tree-value';
   valDiv.appendChild(renderValue(value));
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '增加下層';
+  addBtn.className = 'tree-add-child';
+  addBtn.onclick = () => addChild(valDiv);
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
-  rmBtn.textContent = '-';
+  rmBtn.textContent = '刪除';
   rmBtn.className = 'tree-remove';
   rmBtn.onclick = () => row.remove();
-  row.append(keyInput, valDiv, rmBtn);
+  row.append(keyLabel, valDiv, addBtn, rmBtn);
   return row;
 }
 
@@ -115,8 +120,8 @@ function renderArray(arr){
   arr.forEach(v => div.appendChild(renderArrayRow(v)));
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
-  addBtn.textContent = '+';
-  addBtn.className = 'tree-add';
+  addBtn.textContent = '增加下層';
+  addBtn.className = 'tree-add-child';
   addBtn.onclick = () => div.insertBefore(renderArrayRow(''), addBtn);
   div.appendChild(addBtn);
   return div;
@@ -128,21 +133,43 @@ function renderArrayRow(value){
   const valDiv = document.createElement('div');
   valDiv.className = 'tree-value';
   valDiv.appendChild(renderValue(value));
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '增加下層';
+  addBtn.className = 'tree-add-child';
+  addBtn.onclick = () => addChild(valDiv);
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
-  rmBtn.textContent = '-';
+  rmBtn.textContent = '刪除';
   rmBtn.className = 'tree-remove';
   rmBtn.onclick = () => row.remove();
-  row.append(valDiv, rmBtn);
+  row.append(valDiv, addBtn, rmBtn);
   return row;
 }
 
 function renderPrimitive(value){
-  const input = document.createElement('input');
-  input.className = 'tree-primitive';
-  input.dataset.type = 'primitive';
-  input.value = value;
-  return input;
+  const span = document.createElement('span');
+  span.className = 'tree-label';
+  span.dataset.type = 'primitive';
+  span.textContent = value;
+  return span;
+}
+
+function addChild(container){
+  const node = container.firstElementChild;
+  if(!node){
+    container.appendChild(renderObject({}));
+    return;
+  }
+  if(node.dataset.type === 'object'){
+    node.insertBefore(renderObjectRow('', ''), node.lastElementChild);
+  }else if(node.dataset.type === 'array'){
+    node.insertBefore(renderArrayRow(''), node.lastElementChild);
+  }else{
+    const obj = renderObject({});
+    container.innerHTML = '';
+    container.appendChild(obj);
+  }
 }
 
 function editorToJson(){
@@ -157,7 +184,7 @@ function readValue(node){
     const obj = {};
     Array.from(node.children).forEach(ch => {
       if(!ch.classList.contains('tree-row')) return;
-      const key = ch.querySelector('.tree-key').value;
+      const key = ch.querySelector('.tree-label')?.textContent || '';
       const valNode = ch.querySelector('.tree-value').firstElementChild;
       if(key) obj[key] = readValue(valNode);
     });
@@ -171,7 +198,7 @@ function readValue(node){
     });
     return arr;
   }else{
-    const val = node.value.trim();
+    const val = node.textContent.trim();
     if(val === '') return '';
     try{ return JSON.parse(val); }
     catch{ return val; }

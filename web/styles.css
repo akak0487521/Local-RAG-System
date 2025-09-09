@@ -117,9 +117,8 @@ button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
 #docModal #docBodyEditor{min-height:120px;}
 #docBodyEditor{border:1px solid var(--line);padding:8px;background:#0d1330;overflow:auto;}
 #docBodyEditor .tree-object,#docBodyEditor .tree-array{margin-left:16px;border-left:1px dashed var(--line);padding-left:8px;}
-#docBodyEditor .tree-row{display:flex;align-items:center;gap:6px;margin:4px 0;}
-#docBodyEditor .tree-key{width:120px;}
-#docBodyEditor .tree-add{background:var(--brand-2);color:#052018;padding:2px 6px;border-radius:6px;}
-#docBodyEditor .tree-remove{background:var(--danger);color:#fff;padding:2px 6px;border-radius:6px;}
-#docBodyEditor input{background:#0d1330;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:2px 4px;}
+#docBodyEditor .tree-row{display:flex;align-items:center;gap:8px;margin:4px 0;padding-left:8px;}
+#docBodyEditor .tree-label,#docBodyEditor .tree-add-child,#docBodyEditor .tree-remove{border:1px solid var(--line);border-radius:9999px;padding:2px 6px;}
+#docBodyEditor .tree-add-child{background:var(--brand-2);color:#052018;}
+#docBodyEditor .tree-remove{background:var(--danger);color:#fff;}
 /* --- End modal --- */
