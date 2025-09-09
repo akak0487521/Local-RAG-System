@@ -12,7 +12,19 @@ async function loadDocs(q=''){
     const docs = data.docs || [];
     docs.forEach(d => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${d.title||''}</td><td>${d.file||d.source||''}</td><td><button onclick="openEditModal('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button></td>`;
+      const titleTd = document.createElement('td');
+      titleTd.textContent = d.title || '';
+      const fileTd = document.createElement('td');
+      fileTd.textContent = d.file || d.source || '';
+      const actionsTd = document.createElement('td');
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '編輯';
+      editBtn.addEventListener('click', function(){ openEditModal(d.id); });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '刪除';
+      delBtn.addEventListener('click', function(){ deleteDoc(d.id); });
+      actionsTd.append(editBtn, ' ', delBtn);
+      tr.append(titleTd, fileTd, actionsTd);
       tbody.appendChild(tr);
     });
     const treeDiv = document.getElementById('folderTree');
@@ -55,7 +67,18 @@ function renderTree(node, parent){
   if(node.docs){
     node.docs.forEach(d => {
       const li = document.createElement('li');
-      li.innerHTML = `${d.title||''} <span class="muted">${d.file||d.source||''}</span> <button onclick="openEditModal('${d.id}')">編輯</button> <button onclick="deleteDoc('${d.id}')">刪除</button>`;
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = d.title || '';
+      const fileSpan = document.createElement('span');
+      fileSpan.className = 'muted';
+      fileSpan.textContent = d.file || d.source || '';
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '編輯';
+      editBtn.addEventListener('click', function(){ openEditModal(d.id); });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '刪除';
+      delBtn.addEventListener('click', function(){ deleteDoc(d.id); });
+      li.append(titleSpan, ' ', fileSpan, ' ', editBtn, ' ', delBtn);
       ul.appendChild(li);
     });
   }
@@ -86,7 +109,7 @@ function renderObject(obj){
   addBtn.textContent = '增加下層';
   addBtn.className = 'tree-add-child';
   addBtn.addEventListener('click', e => {
-    e.preventDefault()
+    e.preventDefault();
     e.stopPropagation();
     div.insertBefore(renderObjectRow('', ''), addBtn);
   });
@@ -109,7 +132,6 @@ function renderObjectRow(key, value){
   addBtn.textContent = '增加下層';
   addBtn.className = 'tree-add-child';
   addBtn.addEventListener('click', e => {
-
     e.preventDefault();
     e.stopPropagation();
     const container = e.currentTarget.previousElementSibling;
@@ -136,7 +158,7 @@ function renderArray(arr){
   addBtn.type = 'button';
   addBtn.textContent = '增加下層';
   addBtn.className = 'tree-add-child';
-  addBtn.addEventListener('click', e => 
+  addBtn.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
     div.insertBefore(renderArrayRow(''), addBtn);
@@ -184,7 +206,6 @@ function renderPrimitive(value){
 
 function makeEditable(el){
   el.contentEditable = true;
-
   el.addEventListener('click', e => {
     e.stopPropagation();
   });
