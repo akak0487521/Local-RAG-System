@@ -112,7 +112,31 @@ button.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
 /* --- Simple modal --- */
 #docModal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;justify-content:center;align-items:center;}
 #docModal.show{display:flex;}
-#docModal form{background:var(--panel);padding:20px;border-radius:8px;max-width:600px;width:90%;max-height:90%;overflow:auto;display:flex;flex-direction:column;gap:8px;}
+#docModal form{
+    background:var(--panel);
+    padding:20px;
+    border-radius:8px;
+    max-width:800px;
+    width:90%;
+    max-height:90%;
+    overflow:auto;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+    gap:12px;
+}
+#docModal form .full{grid-column:1/-1;}
+#docModal form .meta{
+    grid-column:1/-1;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+    gap:12px;
+}
+#docModal form .actions{
+    grid-column:1/-1;
+    display:flex;
+    gap:12px;
+    justify-content:flex-end;
+}
 #docModal label{display:flex;flex-direction:column;font-size:14px;gap:4px;}
 #docModal #docBodyEditor{min-height:120px;}
 #docBodyEditor{border:1px solid var(--line);padding:8px;background:#0d1330;overflow:auto;}
