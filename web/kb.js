@@ -86,7 +86,7 @@ function renderObject(obj){
   addBtn.textContent = '增加下層';
   addBtn.className = 'tree-add-child';
   addBtn.addEventListener('click', e => {
-    e.preventDefault();
+    e.preventDefault()
     e.stopPropagation();
     div.insertBefore(renderObjectRow('', ''), addBtn);
   });
@@ -109,10 +109,11 @@ function renderObjectRow(key, value){
   addBtn.textContent = '增加下層';
   addBtn.className = 'tree-add-child';
   addBtn.addEventListener('click', e => {
+
     e.preventDefault();
     e.stopPropagation();
     const container = e.currentTarget.previousElementSibling;
-    addChild(container);
+    addChild(
   });
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
@@ -135,7 +136,7 @@ function renderArray(arr){
   addBtn.type = 'button';
   addBtn.textContent = '增加下層';
   addBtn.className = 'tree-add-child';
-  addBtn.addEventListener('click', e => {
+  addBtn.addEventListener('click', e => 
     e.preventDefault();
     e.stopPropagation();
     div.insertBefore(renderArrayRow(''), addBtn);
@@ -183,6 +184,7 @@ function renderPrimitive(value){
 
 function makeEditable(el){
   el.contentEditable = true;
+
   el.addEventListener('click', e => {
     e.stopPropagation();
   });
