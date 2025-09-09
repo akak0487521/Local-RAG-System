@@ -207,21 +207,6 @@ function renderPrimitive(value){
 }
 
 function makeEditable(el){
-  if(!(el instanceof HTMLTextAreaElement)){
-    el.contentEditable = true;
-  }
-  el.addEventListener('click', e => {
-    e.stopPropagation();
-  });
-  el.addEventListener('keydown', e => {
-    e.stopPropagation();
-    if(e.key === 'Enter' && !e.shiftKey){
-      e.preventDefault();
-      el.blur();
-    }
-  });
-
-function makeEditable(el){
   el.contentEditable = true;
   el.addEventListener('click', e => {
     e.stopPropagation();
