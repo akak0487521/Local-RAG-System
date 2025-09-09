@@ -209,10 +209,9 @@ function renderPrimitive(value){
 function makeEditable(el){
   if(!(el instanceof HTMLTextAreaElement)){
     el.contentEditable = true;
- main
-  el.addEventListener('click', e => {
-    e.stopPropagation();
-  });
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+    });
   el.addEventListener('keydown', e => {
     e.stopPropagation();
     if(e.key === 'Enter' && !e.shiftKey){
