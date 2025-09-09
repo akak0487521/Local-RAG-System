@@ -62,6 +62,122 @@ function renderTree(node, parent){
   parent.appendChild(ul);
 }
 
+function renderBodyEditor(value){
+  const container = document.getElementById('docBodyEditor');
+  container.innerHTML = '';
+  container.appendChild(renderValue(value));
+}
+
+function renderValue(value){
+  if(Array.isArray(value)) return renderArray(value);
+  if(value && typeof value === 'object') return renderObject(value);
+  return renderPrimitive(value);
+}
+
+function renderObject(obj){
+  const div = document.createElement('div');
+  div.className = 'tree-object';
+  div.dataset.type = 'object';
+  Object.entries(obj).forEach(([k,v]) => {
+    div.appendChild(renderObjectRow(k,v));
+  });
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  addBtn.className = 'tree-add';
+  addBtn.onclick = () => div.insertBefore(renderObjectRow('', ''), addBtn);
+  div.appendChild(addBtn);
+  return div;
+}
+
+function renderObjectRow(key, value){
+  const row = document.createElement('div');
+  row.className = 'tree-row';
+  const keyInput = document.createElement('input');
+  keyInput.className = 'tree-key';
+  keyInput.value = key;
+  const valDiv = document.createElement('div');
+  valDiv.className = 'tree-value';
+  valDiv.appendChild(renderValue(value));
+  const rmBtn = document.createElement('button');
+  rmBtn.type = 'button';
+  rmBtn.textContent = '-';
+  rmBtn.className = 'tree-remove';
+  rmBtn.onclick = () => row.remove();
+  row.append(keyInput, valDiv, rmBtn);
+  return row;
+}
+
+function renderArray(arr){
+  const div = document.createElement('div');
+  div.className = 'tree-array';
+  div.dataset.type = 'array';
+  arr.forEach(v => div.appendChild(renderArrayRow(v)));
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  addBtn.className = 'tree-add';
+  addBtn.onclick = () => div.insertBefore(renderArrayRow(''), addBtn);
+  div.appendChild(addBtn);
+  return div;
+}
+
+function renderArrayRow(value){
+  const row = document.createElement('div');
+  row.className = 'tree-row';
+  const valDiv = document.createElement('div');
+  valDiv.className = 'tree-value';
+  valDiv.appendChild(renderValue(value));
+  const rmBtn = document.createElement('button');
+  rmBtn.type = 'button';
+  rmBtn.textContent = '-';
+  rmBtn.className = 'tree-remove';
+  rmBtn.onclick = () => row.remove();
+  row.append(valDiv, rmBtn);
+  return row;
+}
+
+function renderPrimitive(value){
+  const input = document.createElement('input');
+  input.className = 'tree-primitive';
+  input.dataset.type = 'primitive';
+  input.value = value;
+  return input;
+}
+
+function editorToJson(){
+  const container = document.getElementById('docBodyEditor');
+  if(!container.firstElementChild) return {};
+  return readValue(container.firstElementChild);
+}
+
+function readValue(node){
+  const type = node.dataset.type;
+  if(type === 'object'){
+    const obj = {};
+    Array.from(node.children).forEach(ch => {
+      if(!ch.classList.contains('tree-row')) return;
+      const key = ch.querySelector('.tree-key').value;
+      const valNode = ch.querySelector('.tree-value').firstElementChild;
+      if(key) obj[key] = readValue(valNode);
+    });
+    return obj;
+  }else if(type === 'array'){
+    const arr = [];
+    Array.from(node.children).forEach(ch => {
+      if(!ch.classList.contains('tree-row')) return;
+      const valNode = ch.querySelector('.tree-value').firstElementChild;
+      arr.push(readValue(valNode));
+    });
+    return arr;
+  }else{
+    const val = node.value.trim();
+    if(val === '') return '';
+    try{ return JSON.parse(val); }
+    catch{ return val; }
+  }
+}
+
 async function uploadDoc(ev){
   ev.preventDefault();
   const title = document.getElementById('title').value.trim();
@@ -102,9 +218,10 @@ async function openEditModal(id){
     document.getElementById('docType').value = doc.type;
     document.getElementById('docTitle').value = doc.title;
     document.getElementById('docSummary').value = doc.summary;
-    const bodyField = document.getElementById('docBody');
-    if(typeof doc.body === 'object'){ bodyField.value = JSON.stringify(doc.body, null, 2); }
-    else{ bodyField.value = doc.body; }
+    let bodyData;
+    if(typeof doc.body === 'object'){ bodyData = doc.body; }
+    else{ try{ bodyData = JSON.parse(doc.body||'{}'); }catch{ bodyData = {}; } }
+    renderBodyEditor(bodyData);
     document.getElementById('docTags').value = (doc.tags || []).join(', ');
     document.getElementById('docCanonicality').value = doc.canonicality;
     document.getElementById('docVersion').value = doc.version;
@@ -122,10 +239,7 @@ async function saveDoc(){
   const type = document.getElementById('docType').value.trim();
   const title = document.getElementById('docTitle').value.trim();
   const summary = document.getElementById('docSummary').value.trim();
-  const bodyText = document.getElementById('docBody').value.trim();
-  let body;
-  try{ body = bodyText ? JSON.parse(bodyText) : {}; }
-  catch(e){ alert('Body JSON 格式錯誤'); return; }
+  const body = editorToJson();
   const tags = document.getElementById('docTags').value.split(',').map(t=>t.trim()).filter(Boolean);
   const canonicality = document.getElementById('docCanonicality').value.trim();
   const version = document.getElementById('docVersion').value.trim();
