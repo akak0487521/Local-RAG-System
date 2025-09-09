@@ -86,18 +86,17 @@ async function openEditModal(id){
     const res = await fetch(`/docs/${id}`, { headers: buildHeaders() });
     if(!res.ok){ alert('取得文件失敗'); return; }
     const data = await res.json();
-    let doc;
-    try{ doc = JSON.parse(data.content||'{}'); }
-    catch{ doc = { id:data.id, title:data.title, body:data.content, ...(data.metadata||{}) }; }
-    doc.id = doc.id || data.id || '';
-    doc.namespace = doc.namespace || (data.metadata||{}).namespace || '';
-    doc.type = doc.type || (data.metadata||{}).type || '';
-    doc.title = doc.title || data.title || '';
-    doc.summary = doc.summary || (data.metadata||{}).summary || '';
-    doc.body = doc.body || data.content || '';
-    doc.tags = doc.tags || (data.metadata||{}).tags || [];
-    doc.canonicality = doc.canonicality || (data.metadata||{}).canonicality || '';
-    doc.version = doc.version || (data.metadata||{}).version || '';
+    let doc = data.content ? JSON.parse(data.content) : data;
+    const meta = data.metadata || {};
+    doc.id = doc.id || data.id || meta.id || '';
+    doc.namespace = doc.namespace || data.namespace || meta.namespace || '';
+    doc.type = doc.type || data.type || meta.type || '';
+    doc.title = doc.title || data.title || meta.title || '';
+    doc.summary = doc.summary || data.summary || meta.summary || '';
+    doc.body = doc.body || data.body || meta.body || '';
+    doc.tags = doc.tags || data.tags || meta.tags || [];
+    doc.canonicality = doc.canonicality || data.canonicality || meta.canonicality || '';
+    doc.version = doc.version || data.version || meta.version || '';
     document.getElementById('docId').value = doc.id;
     document.getElementById('docNamespace').value = doc.namespace;
     document.getElementById('docType').value = doc.type;
@@ -130,12 +129,7 @@ async function saveDoc(){
   const tags = document.getElementById('docTags').value.split(',').map(t=>t.trim()).filter(Boolean);
   const canonicality = document.getElementById('docCanonicality').value.trim();
   const version = document.getElementById('docVersion').value.trim();
-  const doc = { id, namespace, type, title, summary, body, tags, canonicality, version };
-  const payload = {
-    title,
-    content: JSON.stringify(doc, null, 2),
-    metadata: { namespace, type, summary, tags, canonicality, version }
-  };
+  const payload = { id, namespace, type, title, summary, body, tags, canonicality, version };
   try{
     const res = await fetch(`/docs/${id}`, {
       method:'PUT',
